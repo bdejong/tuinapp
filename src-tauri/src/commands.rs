@@ -1,5 +1,6 @@
 use crate::db::Database;
-use crate::models::{Activity, Plant};
+use crate::models::{Activity, Plant, PlantPhoto};
+use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::Serialize;
 use tauri::State;
 
@@ -223,4 +224,64 @@ pub fn get_month_data(db: State<Database>, month: u32) -> Result<MonthData, Stri
         plant_late,
         activities,
     })
+}
+
+#[tauri::command]
+pub fn get_photos(db: State<Database>, plant_id: i64) -> Result<Vec<PlantPhoto>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare("SELECT id, plant_id, sort_order, image_data, created_at FROM plant_photos WHERE plant_id = ?1 ORDER BY sort_order")
+        .map_err(|e| e.to_string())?;
+
+    let photos = stmt
+        .query_map([plant_id], |row| {
+            let image_blob: Option<Vec<u8>> = row.get(3)?;
+            let image_data = image_blob.map(|b| STANDARD.encode(&b));
+
+            Ok(PlantPhoto {
+                id: row.get(0)?,
+                plant_id: row.get(1)?,
+                sort_order: row.get(2)?,
+                image_data,
+                created_at: row.get(4)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    Ok(photos)
+}
+
+#[tauri::command]
+pub fn add_photo(db: State<Database>, plant_id: i64, image_data: String, sort_order: i32) -> Result<PlantPhoto, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+
+    let image_bytes = STANDARD.decode(&image_data).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT INTO plant_photos (plant_id, sort_order, image_data) VALUES (?1, ?2, ?3)",
+        rusqlite::params![plant_id, sort_order, image_bytes],
+    ).map_err(|e| e.to_string())?;
+
+    let id = conn.last_insert_rowid();
+
+    Ok(PlantPhoto {
+        id: Some(id),
+        plant_id,
+        sort_order,
+        image_data: Some(image_data),
+        created_at: None,
+    })
+}
+
+#[tauri::command]
+pub fn delete_photo(db: State<Database>, id: i64) -> Result<(), String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+
+    conn.execute("DELETE FROM plant_photos WHERE id = ?1", [id])
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
 }

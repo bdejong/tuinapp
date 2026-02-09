@@ -31,6 +31,9 @@ pub fn run() {
             commands::update_activity,
             commands::delete_activity,
             commands::get_month_data,
+            commands::get_photos,
+            commands::add_photo,
+            commands::delete_photo,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
