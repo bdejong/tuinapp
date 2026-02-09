@@ -10,6 +10,7 @@
 |--------|------|-------------|
 | id | INTEGER PRIMARY KEY | Unique identifier |
 | name | TEXT NOT NULL | Plant name (e.g., "Tomato Roma") |
+| plant_type | TEXT | vegetable_fruit / flower / herb |
 | sun_requirement | TEXT | full_sun / partial_shade / full_shade |
 | sow_periods | INTEGER | 24-bit bitmask for sowing periods |
 | plant_periods | INTEGER | 24-bit bitmask for planting periods |
@@ -49,7 +50,7 @@
 
 ### 2.1 Plant Management View
 - Form to add/edit plants (modal dialog)
-- Name, sun requirement dropdown, notes textarea
+- Name, plant type dropdown (vegetable/fruit, flower, herb), sun requirement dropdown, notes textarea
 - 24-checkbox grid for sowing periods (visual month/period layout)
 - 24-checkbox grid for planting periods
 - Photo gallery with camera capture button

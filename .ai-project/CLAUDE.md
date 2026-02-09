@@ -18,7 +18,7 @@ A desktop application for managing garden activities, including tracking plants 
 ### Data Model
 
 **Plants:**
-- Name, sun requirement (3 levels), notes field
+- Name, plant type (vegetable/fruit, flower, herb), sun requirement (3 levels), notes field
 - Sowing periods: 24 checkboxes (12 months x early/late) stored as bitmask
 - Planting periods: 24 checkboxes stored as bitmask
 - Multiple photos with sort order (for seed packet front/back)
