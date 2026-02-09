@@ -46,6 +46,12 @@ const handleDelete = async (id: number) => {
   showForm.value = false;
 };
 
+const truncateNotes = (notes: string | undefined, maxLength = 50): string => {
+  if (!notes) return '-';
+  if (notes.length <= maxLength) return notes;
+  return notes.substring(0, maxLength) + '...';
+};
+
 defineExpose({ openAddForm, openEditForm });
 </script>
 
@@ -70,7 +76,7 @@ defineExpose({ openAddForm, openEditForm });
           <td>{{ plant.name }}</td>
           <td>{{ plant.plant_type?.replace('_', '/') || '-' }}</td>
           <td>{{ plant.sun_requirement?.replace('_', ' ') || '-' }}</td>
-          <td>{{ plant.notes || '-' }}</td>
+          <td :title="plant.notes">{{ truncateNotes(plant.notes) }}</td>
         </tr>
       </tbody>
     </table>

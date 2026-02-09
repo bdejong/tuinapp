@@ -70,22 +70,32 @@ const handleDelete = () => {
 
       <div class="form-group">
         <label>Type</label>
-        <select v-model="form.plant_type">
-          <option :value="undefined">-- Select --</option>
-          <option v-for="opt in PLANT_TYPES" :key="opt.value" :value="opt.value">
+        <div class="button-group">
+          <button
+            v-for="opt in PLANT_TYPES"
+            :key="opt.value"
+            type="button"
+            :class="{ selected: form.plant_type === opt.value }"
+            @click="form.plant_type = form.plant_type === opt.value ? undefined : opt.value"
+          >
             {{ opt.label }}
-          </option>
-        </select>
+          </button>
+        </div>
       </div>
 
       <div class="form-group">
         <label>Sun Requirement</label>
-        <select v-model="form.sun_requirement">
-          <option :value="undefined">-- Select --</option>
-          <option v-for="opt in SUN_REQUIREMENTS" :key="opt.value" :value="opt.value">
+        <div class="button-group">
+          <button
+            v-for="opt in SUN_REQUIREMENTS"
+            :key="opt.value"
+            type="button"
+            :class="{ selected: form.sun_requirement === opt.value }"
+            @click="form.sun_requirement = form.sun_requirement === opt.value ? undefined : opt.value"
+          >
             {{ opt.label }}
-          </option>
-        </select>
+          </button>
+        </div>
       </div>
 
       <PeriodCheckboxGrid v-model="form.sow_periods" label="Sowing Periods" />
@@ -184,5 +194,30 @@ button {
 .delete-btn {
   background: #f44336;
   color: white;
+}
+
+.button-group {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.button-group button {
+  padding: 0.5rem 1rem;
+  border: 1px solid #ccc;
+  background: white;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.button-group button:hover {
+  border-color: #4caf50;
+}
+
+.button-group button.selected {
+  background: #4caf50;
+  color: white;
+  border-color: #4caf50;
 }
 </style>

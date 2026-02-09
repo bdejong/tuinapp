@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onUnmounted, watch } from 'vue';
+import { ref, onUnmounted, watch, nextTick } from 'vue';
 import type { PlantPhoto } from '../types';
 import { getPhotos, addPhoto, deletePhoto } from '../api';
 
@@ -24,14 +24,22 @@ watch(() => props.plantId, loadPhotos, { immediate: true });
 
 const startCamera = async () => {
   try {
+    // Show the video element first
+    showCamera.value = true;
+
+    // Wait for DOM to update
+    await nextTick();
+
+    // Now get the camera stream
     stream.value = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment' }
+      video: { width: { ideal: 1280 }, height: { ideal: 720 } }
     });
+
     if (videoRef.value) {
       videoRef.value.srcObject = stream.value;
     }
-    showCamera.value = true;
   } catch (err) {
+    showCamera.value = false;
     alert('Could not access camera: ' + err);
   }
 };
