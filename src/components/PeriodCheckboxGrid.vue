@@ -61,12 +61,13 @@ const togglePeriod = (index: number) => {
 
 <style scoped>
 .period-grid {
-  margin: 1rem 0;
+  margin: 0.6rem 0;
 }
 
 .period-label {
-  font-weight: bold;
-  margin-bottom: 0.5rem;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+  font-size: 0.8rem;
 }
 
 .grid {
@@ -79,25 +80,25 @@ const togglePeriod = (index: number) => {
 }
 
 .corner, .row-label {
-  width: 50px;
-  padding: 4px;
-  font-size: 0.75rem;
+  width: 36px;
+  padding: 2px 4px;
+  font-size: 0.65rem;
   background: #f5f5f5;
   border-right: 1px solid #ccc;
 }
 
 .month-header {
-  width: 40px;
+  width: 30px;
   text-align: center;
-  padding: 4px;
-  font-size: 0.75rem;
+  padding: 2px;
+  font-size: 0.65rem;
   background: #f5f5f5;
   border-right: 1px solid #eee;
 }
 
 .cell {
-  width: 40px;
-  height: 24px;
+  width: 30px;
+  height: 18px;
   border: 1px solid #eee;
   cursor: pointer;
   background: white;

@@ -97,6 +97,7 @@ onUnmounted(() => {
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
 }
 </style>
 
@@ -107,16 +108,18 @@ body {
 }
 
 .sidebar {
-  width: 200px;
+  width: 160px;
   background: #2c3e50;
   color: white;
-  padding: 1rem;
+  padding: 0.75rem;
   display: flex;
   flex-direction: column;
+  font-size: 0.85rem;
 }
 
 .sidebar h2 {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
 }
 
 .sidebar ul {
@@ -125,7 +128,7 @@ body {
 }
 
 .sidebar li {
-  padding: 0.75rem;
+  padding: 0.5rem 0.6rem;
   cursor: pointer;
   border-radius: 4px;
   margin-bottom: 0.25rem;
@@ -142,16 +145,17 @@ body {
 .quick-add {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.35rem;
 }
 
 .quick-add button {
-  padding: 0.5rem;
+  padding: 0.35rem 0.5rem;
   background: #4caf50;
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
+  font-size: 0.75rem;
 }
 
 .content {
@@ -168,17 +172,18 @@ body {
 
 .tabs {
   display: flex;
-  padding: 0.5rem 1rem;
-  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  gap: 0.35rem;
   background: white;
   border-bottom: 1px solid #eee;
 }
 
 .tabs button {
-  padding: 0.5rem 1rem;
+  padding: 0.3rem 0.75rem;
   border: none;
   background: #e0e0e0;
   border-radius: 4px;
+  font-size: 0.8rem;
   cursor: pointer;
 }
 

@@ -77,8 +77,8 @@ defineExpose({ openAddForm, openEditForm });
       <thead>
         <tr>
           <th>Name</th>
-          <th>Type</th>
-          <th>Sun</th>
+          <th class="icon-header">Type</th>
+          <th class="icon-header">Sun</th>
           <th>Notes</th>
         </tr>
       </thead>
@@ -107,23 +107,29 @@ defineExpose({ openAddForm, openEditForm });
 
 <style scoped>
 .plant-list {
-  padding: 1rem;
+  padding: 0.75rem;
 }
 
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.header h1 {
+  font-size: 1.25rem;
+  margin: 0;
 }
 
 .add-btn {
   background: #4caf50;
   color: white;
   border: none;
-  padding: 0.5rem 1rem;
+  padding: 0.35rem 0.75rem;
   border-radius: 4px;
   cursor: pointer;
+  font-size: 0.8rem;
 }
 
 table {
@@ -133,12 +139,20 @@ table {
 
 th, td {
   text-align: left;
-  padding: 0.75rem;
+  padding: 0.4rem 0.5rem;
   border-bottom: 1px solid #eee;
+  font-size: 0.8rem;
 }
 
 th {
   background: #f5f5f5;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.icon-header {
+  text-align: center;
+  width: 50px;
 }
 
 tbody tr {
@@ -152,11 +166,12 @@ tbody tr:hover {
 .empty {
   color: #666;
   text-align: center;
-  padding: 2rem;
+  padding: 1.5rem;
+  font-size: 0.85rem;
 }
 
 .icon-cell {
   text-align: center;
-  font-size: 1.25rem;
+  font-size: 1rem;
 }
 </style>

@@ -161,37 +161,47 @@ const cancelDelete = () => {
 
 .modal {
   background: white;
-  padding: 2rem;
+  padding: 1.25rem;
   border-radius: 8px;
-  max-width: 600px;
+  max-width: 550px;
   max-height: 90vh;
   overflow-y: auto;
   width: 100%;
+  font-size: 0.85rem;
+}
+
+.modal h2 {
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
 }
 
 .form-group {
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 }
 
 .form-group label {
   display: block;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.2rem;
   font-weight: 500;
+  font-size: 0.8rem;
 }
 
 .form-group input,
 .form-group select,
 .form-group textarea {
   width: 100%;
-  padding: 0.5rem;
+  padding: 0.35rem 0.5rem;
   border: 1px solid #ccc;
   border-radius: 4px;
+  font-size: 0.85rem;
 }
 
 .button-row {
   display: flex;
-  gap: 0.5rem;
-  margin-top: 1.5rem;
+  gap: 0.4rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .spacer {
@@ -199,9 +209,10 @@ const cancelDelete = () => {
 }
 
 button {
-  padding: 0.5rem 1rem;
+  padding: 0.35rem 0.75rem;
   border: none;
   border-radius: 4px;
+  font-size: 0.8rem;
   cursor: pointer;
 }
 
@@ -227,17 +238,18 @@ button {
 
 .button-group {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.35rem;
   flex-wrap: wrap;
 }
 
 .button-group button {
-  padding: 0.5rem 1rem;
+  padding: 0.3rem 0.6rem;
   border: 1px solid #ccc;
   background: white;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.15s;
+  font-size: 0.8rem;
 }
 
 .button-group button:hover {
@@ -251,11 +263,11 @@ button {
 }
 
 .button-group button .icon {
-  font-size: 1.25rem;
-  margin-right: 0.25rem;
+  font-size: 1rem;
+  margin-right: 0.2rem;
 }
 
 .button-group button .label {
-  font-size: 0.875rem;
+  font-size: 0.75rem;
 }
 </style>
