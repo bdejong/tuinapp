@@ -1,0 +1,38 @@
+export interface Plant {
+  id?: number;
+  name: string;
+  sun_requirement?: 'full_sun' | 'partial_shade' | 'full_shade';
+  sow_periods: number;
+  plant_periods: number;
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PlantPhoto {
+  id?: number;
+  plant_id: number;
+  sort_order: number;
+  image_data?: string;
+  created_at?: string;
+}
+
+export interface Activity {
+  id?: number;
+  name: string;
+  description?: string;
+  active_periods: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export const MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+] as const;
+
+export const SUN_REQUIREMENTS = [
+  { value: 'full_sun', label: 'Full Sun' },
+  { value: 'partial_shade', label: 'Partial Shade' },
+  { value: 'full_shade', label: 'Full Shade' },
+] as const;
