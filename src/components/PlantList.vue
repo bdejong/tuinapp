@@ -1,8 +1,19 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import type { Plant } from '../types';
+import { PLANT_TYPES, SUN_REQUIREMENTS } from '../types';
 import { getAllPlants, createPlant, updatePlant, deletePlant } from '../api';
 import PlantForm from './PlantForm.vue';
+
+const getTypeIcon = (type: string | undefined): string => {
+  const found = PLANT_TYPES.find(t => t.value === type);
+  return found?.icon || '-';
+};
+
+const getSunIcon = (sun: string | undefined): string => {
+  const found = SUN_REQUIREMENTS.find(s => s.value === sun);
+  return found?.icon || '-';
+};
 
 const plants = ref<Plant[]>([]);
 const showForm = ref(false);
@@ -74,8 +85,8 @@ defineExpose({ openAddForm, openEditForm });
       <tbody>
         <tr v-for="plant in plants" :key="plant.id" @click="openEditForm(plant)">
           <td>{{ plant.name }}</td>
-          <td>{{ plant.plant_type?.replace('_', '/') || '-' }}</td>
-          <td>{{ plant.sun_requirement?.replace('_', ' ') || '-' }}</td>
+          <td class="icon-cell" :title="plant.plant_type?.replace('_', '/')">{{ getTypeIcon(plant.plant_type) }}</td>
+          <td class="icon-cell" :title="plant.sun_requirement?.replace('_', ' ')">{{ getSunIcon(plant.sun_requirement) }}</td>
           <td :title="plant.notes">{{ truncateNotes(plant.notes) }}</td>
         </tr>
       </tbody>
@@ -142,5 +153,10 @@ tbody tr:hover {
   color: #666;
   text-align: center;
   padding: 2rem;
+}
+
+.icon-cell {
+  text-align: center;
+  font-size: 1.25rem;
 }
 </style>

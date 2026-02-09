@@ -25,9 +25,9 @@ export interface MonthData {
 export const getMonthData = (month: number) => invoke<MonthData>('get_month_data', { month });
 
 // Photos
-export const getPhotos = (plantId: number) => invoke<PlantPhoto[]>('get_photos', { plant_id: plantId });
+export const getPhotos = (plantId: number) => invoke<PlantPhoto[]>('get_photos', { plantId });
 export const addPhoto = (plantId: number, imageData: string, sortOrder: number) =>
-  invoke<PlantPhoto>('add_photo', { plant_id: plantId, image_data: imageData, sort_order: sortOrder });
+  invoke<PlantPhoto>('add_photo', { plantId, imageData, sortOrder });
 export const deletePhoto = (id: number) => invoke<void>('delete_photo', { id });
 
 // Import

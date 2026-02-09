@@ -51,10 +51,22 @@ const handleSaveAndAdd = () => {
   emit('save-and-add', { ...form.value });
 };
 
+const confirmingDelete = ref(false);
+
 const handleDelete = () => {
-  if (props.plant?.id && confirm('Delete this plant?')) {
+  if (!props.plant?.id) return;
+  confirmingDelete.value = true;
+};
+
+const confirmDelete = () => {
+  if (props.plant?.id) {
     emit('delete', props.plant.id);
   }
+  confirmingDelete.value = false;
+};
+
+const cancelDelete = () => {
+  confirmingDelete.value = false;
 };
 </script>
 
@@ -116,7 +128,14 @@ const handleDelete = () => {
       </div>
 
       <div class="button-row">
-        <button v-if="isEditing()" type="button" class="delete-btn" @click="handleDelete">Delete</button>
+        <template v-if="isEditing()">
+          <template v-if="confirmingDelete">
+            <span class="confirm-text">Delete this plant?</span>
+            <button type="button" class="delete-btn" @click="confirmDelete">Yes, Delete</button>
+            <button type="button" class="secondary-btn" @click="cancelDelete">No</button>
+          </template>
+          <button v-else type="button" class="delete-btn" @click="handleDelete">Delete</button>
+        </template>
         <div class="spacer"></div>
         <button type="button" class="secondary-btn" @click="emit('close')">Cancel</button>
         <button v-if="!isEditing()" type="button" class="secondary-btn" @click="handleSaveAndAdd">Save & Add Another</button>
@@ -198,6 +217,12 @@ button {
 .delete-btn {
   background: #f44336;
   color: white;
+}
+
+.confirm-text {
+  color: #f44336;
+  font-weight: 500;
+  margin-right: 0.5rem;
 }
 
 .button-group {

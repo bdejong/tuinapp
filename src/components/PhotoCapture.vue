@@ -12,6 +12,7 @@ const videoRef = ref<HTMLVideoElement | null>(null);
 const stream = ref<MediaStream | null>(null);
 const showCamera = ref(false);
 const enlargedPhoto = ref<PlantPhoto | null>(null);
+const confirmingDeleteId = ref<number | null>(null);
 
 const loadPhotos = async () => {
   if (props.plantId) {
@@ -54,15 +55,22 @@ const stopCamera = () => {
 };
 
 const capturePhoto = async () => {
+  console.log('capturePhoto called');
+  console.log('videoRef.value:', videoRef.value);
+  console.log('props.plantId:', props.plantId);
+
   if (!videoRef.value || !props.plantId) {
+    console.log('Early return: video or plant not ready');
     alert('Cannot capture: video or plant not ready');
     return;
   }
 
   const video = videoRef.value;
+  console.log('video dimensions:', video.videoWidth, 'x', video.videoHeight);
 
   // Check if video has dimensions
   if (video.videoWidth === 0 || video.videoHeight === 0) {
+    console.log('Video dimensions are 0');
     alert('Video not ready yet. Please wait a moment and try again.');
     return;
   }
@@ -94,16 +102,29 @@ const capturePhoto = async () => {
   }
 };
 
-const handleDeletePhoto = async (event: Event, id: number) => {
+const handleDeletePhoto = (event: Event, id: number) => {
   event.stopPropagation();
-  if (confirm('Delete this photo?')) {
+  confirmingDeleteId.value = id;
+};
+
+const confirmDeletePhoto = async () => {
+  const id = confirmingDeleteId.value;
+  if (!id) return;
+
+  try {
     await deletePhoto(id);
     await loadPhotos();
-    // Close enlarged view if we deleted the currently viewed photo
     if (enlargedPhoto.value?.id === id) {
       enlargedPhoto.value = null;
     }
+  } catch (err) {
+    console.error('deletePhoto failed:', err);
   }
+  confirmingDeleteId.value = null;
+};
+
+const cancelDeletePhoto = () => {
+  confirmingDeleteId.value = null;
 };
 
 const openEnlargedView = (photo: PlantPhoto) => {
@@ -124,10 +145,17 @@ onUnmounted(stopCamera);
         v-for="photo in photos"
         :key="photo.id"
         class="photo-item"
+        :class="{ confirming: confirmingDeleteId === photo.id }"
         @click="openEnlargedView(photo)"
       >
         <img :src="'data:image/jpeg;base64,' + photo.image_data" alt="Plant photo" />
-        <button class="delete-btn" @click="(e) => handleDeletePhoto(e, photo.id!)">×</button>
+        <template v-if="confirmingDeleteId === photo.id">
+          <div class="confirm-overlay" @click.stop>
+            <button class="confirm-yes" @click="confirmDeletePhoto">🗑️</button>
+            <button class="confirm-no" @click="cancelDeletePhoto">✕</button>
+          </div>
+        </template>
+        <button v-else class="delete-btn" @click="(e) => handleDeletePhoto(e, photo.id!)">×</button>
       </div>
 
       <div v-if="!showCamera" class="add-photo" @click="startCamera">
@@ -148,10 +176,17 @@ onUnmounted(stopCamera);
       <div class="photo-modal-content" @click.stop>
         <img :src="'data:image/jpeg;base64,' + enlargedPhoto.image_data" alt="Enlarged photo" />
         <div class="photo-modal-controls">
-          <button class="delete-btn-large" @click="(e) => handleDeletePhoto(e, enlargedPhoto!.id!)">
-            🗑️ Delete
-          </button>
-          <button @click="closeEnlargedView">Close</button>
+          <template v-if="confirmingDeleteId === enlargedPhoto.id">
+            <span class="confirm-text">Delete?</span>
+            <button class="delete-btn-large" @click="confirmDeletePhoto">Yes</button>
+            <button @click="cancelDeletePhoto">No</button>
+          </template>
+          <template v-else>
+            <button class="delete-btn-large" @click="(e) => handleDeletePhoto(e, enlargedPhoto!.id!)">
+              🗑️ Delete
+            </button>
+            <button @click="closeEnlargedView">Close</button>
+          </template>
         </div>
       </div>
     </div>
@@ -208,6 +243,42 @@ onUnmounted(stopCamera);
 .photo-item .delete-btn:hover {
   background: rgba(255, 0, 0, 1);
   transform: scale(1.1);
+}
+
+.photo-item.confirming img {
+  opacity: 0.5;
+}
+
+.confirm-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+}
+
+.confirm-yes, .confirm-no {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.confirm-yes {
+  background: #f44336;
+  color: white;
+}
+
+.confirm-no {
+  background: #e0e0e0;
 }
 
 .add-photo {
@@ -294,6 +365,12 @@ onUnmounted(stopCamera);
   display: flex;
   gap: 1rem;
   margin-top: 1rem;
+  align-items: center;
+}
+
+.photo-modal-controls .confirm-text {
+  color: #f44336;
+  font-weight: 500;
 }
 
 .photo-modal-controls button {

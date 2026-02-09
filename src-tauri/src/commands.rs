@@ -226,7 +226,7 @@ pub fn get_month_data(db: State<Database>, month: u32) -> Result<MonthData, Stri
     })
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub fn get_photos(db: State<Database>, plant_id: i64) -> Result<Vec<PlantPhoto>, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
@@ -254,7 +254,7 @@ pub fn get_photos(db: State<Database>, plant_id: i64) -> Result<Vec<PlantPhoto>,
     Ok(photos)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub fn add_photo(db: State<Database>, plant_id: i64, image_data: String, sort_order: i32) -> Result<PlantPhoto, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
