@@ -1,4 +1,5 @@
 mod db;
+mod models;
 
 use db::{get_db_path, run_migrations, Database};
 use tauri::Manager;
