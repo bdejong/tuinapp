@@ -21,6 +21,7 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
         CREATE TABLE IF NOT EXISTS plants (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
+            plant_type TEXT CHECK(plant_type IN ('vegetable_fruit', 'flower', 'herb')),
             sun_requirement TEXT CHECK(sun_requirement IN ('full_sun', 'partial_shade', 'full_shade')),
             sow_periods INTEGER DEFAULT 0,
             plant_periods INTEGER DEFAULT 0,

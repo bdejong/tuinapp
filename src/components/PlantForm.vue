@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import type { Plant } from '../types';
-import { SUN_REQUIREMENTS } from '../types';
+import { SUN_REQUIREMENTS, PLANT_TYPES } from '../types';
 import PeriodCheckboxGrid from './PeriodCheckboxGrid.vue';
 
 const props = defineProps<{
@@ -18,6 +18,7 @@ const emit = defineEmits<{
 
 const form = ref<Plant>({
   name: '',
+  plant_type: undefined,
   sun_requirement: undefined,
   sow_periods: 0,
   plant_periods: 0,
@@ -30,6 +31,7 @@ watch(() => props.visible, (visible) => {
   } else if (visible) {
     form.value = {
       name: '',
+      plant_type: undefined,
       sun_requirement: undefined,
       sow_periods: 0,
       plant_periods: 0,
@@ -63,6 +65,16 @@ const handleDelete = () => {
       <div class="form-group">
         <label>Name</label>
         <input v-model="form.name" type="text" placeholder="Plant name" />
+      </div>
+
+      <div class="form-group">
+        <label>Type</label>
+        <select v-model="form.plant_type">
+          <option :value="undefined">-- Select --</option>
+          <option v-for="opt in PLANT_TYPES" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
+        </select>
       </div>
 
       <div class="form-group">

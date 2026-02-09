@@ -1,6 +1,7 @@
 export interface Plant {
   id?: number;
   name: string;
+  plant_type?: 'vegetable_fruit' | 'flower' | 'herb';
   sun_requirement?: 'full_sun' | 'partial_shade' | 'full_shade';
   sow_periods: number;
   plant_periods: number;
@@ -29,6 +30,12 @@ export interface Activity {
 export const MONTHS = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+] as const;
+
+export const PLANT_TYPES = [
+  { value: 'vegetable_fruit', label: 'Vegetable/Fruit' },
+  { value: 'flower', label: 'Flower' },
+  { value: 'herb', label: 'Herb' },
 ] as const;
 
 export const SUN_REQUIREMENTS = [

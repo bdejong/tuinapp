@@ -60,6 +60,7 @@ defineExpose({ openAddForm, openEditForm });
       <thead>
         <tr>
           <th>Name</th>
+          <th>Type</th>
           <th>Sun</th>
           <th>Notes</th>
         </tr>
@@ -67,6 +68,7 @@ defineExpose({ openAddForm, openEditForm });
       <tbody>
         <tr v-for="plant in plants" :key="plant.id" @click="openEditForm(plant)">
           <td>{{ plant.name }}</td>
+          <td>{{ plant.plant_type?.replace('_', '/') || '-' }}</td>
           <td>{{ plant.sun_requirement?.replace('_', ' ') || '-' }}</td>
           <td>{{ plant.notes || '-' }}</td>
         </tr>

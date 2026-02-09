@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 pub struct Plant {
     pub id: Option<i64>,
     pub name: String,
+    pub plant_type: Option<String>,
     pub sun_requirement: Option<String>,
     pub sow_periods: i32,
     pub plant_periods: i32,
