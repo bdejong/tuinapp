@@ -55,23 +55,14 @@ const stopCamera = () => {
 };
 
 const capturePhoto = async () => {
-  console.log('capturePhoto called');
-  console.log('videoRef.value:', videoRef.value);
-  console.log('props.plantId:', props.plantId);
-
   if (!videoRef.value || !props.plantId) {
-    console.log('Early return: video or plant not ready');
-    alert('Cannot capture: video or plant not ready');
     return;
   }
 
   const video = videoRef.value;
-  console.log('video dimensions:', video.videoWidth, 'x', video.videoHeight);
 
   // Check if video has dimensions
   if (video.videoWidth === 0 || video.videoHeight === 0) {
-    console.log('Video dimensions are 0');
-    alert('Video not ready yet. Please wait a moment and try again.');
     return;
   }
 
