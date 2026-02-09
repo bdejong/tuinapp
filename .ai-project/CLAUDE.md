@@ -44,6 +44,18 @@ A desktop application for managing garden activities, including tracking plants 
 - Stored as binary blobs in SQLite
 - Ordered by sort_order field
 
+## CI/CD
+
+GitHub Actions workflow (`.github/workflows/build.yml`) builds for:
+- **macOS**: ARM64 (Apple Silicon) and x86_64 (Intel) - produces .dmg
+- **Linux**: Ubuntu - produces .deb and .AppImage
+- **Windows**: produces .msi and .exe installers
+
+Triggers:
+- Push to main/master branch
+- Pull requests
+- Version tags (v*) - creates GitHub Release with all installers
+
 ## File Structure
 
 ```
@@ -51,7 +63,30 @@ tuinapp/
 ├── .ai-project/          # AI project documentation
 │   ├── CLAUDE.md         # This file - project context
 │   └── design.md         # Detailed design document
+├── .github/workflows/    # GitHub Actions
+│   └── build.yml         # Multi-platform build workflow
 ├── src-tauri/            # Rust backend
+│   ├── src/
+│   │   ├── commands.rs   # Tauri commands (CRUD operations)
+│   │   ├── db.rs         # SQLite database layer
+│   │   ├── lib.rs        # Library entry point
+│   │   └── main.rs       # Application entry point
+│   ├── Cargo.toml
+│   └── tauri.conf.json
 ├── src/                  # Vue.js frontend
-└── README.md
+│   ├── components/
+│   │   ├── ActivityForm.vue
+│   │   ├── ActivityList.vue
+│   │   ├── MonthlyView.vue
+│   │   ├── PeriodCheckboxGrid.vue
+│   │   ├── PhotoCapture.vue
+│   │   ├── PlantForm.vue
+│   │   ├── PlantGrid.vue
+│   │   ├── PlantList.vue
+│   │   └── SettingsView.vue
+│   ├── api.ts            # Frontend API helpers
+│   ├── types.ts          # TypeScript types
+│   ├── App.vue           # Main application
+│   └── main.ts
+└── package.json
 ```
