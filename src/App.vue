@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import PlantList from './components/PlantList.vue';
 import PlantGrid from './components/PlantGrid.vue';
 import ActivityList from './components/ActivityList.vue';
+import MonthlyView from './components/MonthlyView.vue';
 
 type View = 'plants' | 'activities' | 'calendar' | 'settings';
 type PlantSubView = 'list' | 'grid';
@@ -61,7 +62,7 @@ const handleAddActivity = () => {
         <PlantGrid v-else @edit="(plant) => { plantSubView = 'list'; plantListRef?.openEditForm(plant); }" />
       </div>
       <ActivityList v-else-if="currentView === 'activities'" ref="activityListRef" />
-      <div v-else-if="currentView === 'calendar'" class="placeholder">Calendar (coming soon)</div>
+      <MonthlyView v-else-if="currentView === 'calendar'" />
       <div v-else-if="currentView === 'settings'" class="placeholder">Settings (coming soon)</div>
     </main>
   </div>
