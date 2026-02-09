@@ -2828,9 +2828,247 @@ git commit -m "chore: production-ready TuinApp"
 
 ---
 
+## Phase 11: Seed Data Import
+
+### Task 11.1: Create Import Command
+
+**Files:**
+- Modify: `src-tauri/src/commands.rs`
+- Modify: `src-tauri/src/main.rs`
+
+**Step 1: Add import_plants_tsv command**
+
+Add to `src-tauri/src/commands.rs`:
+
+```rust
+#[tauri::command]
+pub fn import_plants_tsv(db: State<Database>, tsv_content: String) -> Result<u32, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+
+    let lines: Vec<&str> = tsv_content.lines().collect();
+    if lines.is_empty() {
+        return Ok(0);
+    }
+
+    let mut imported = 0;
+
+    for line in lines.iter().skip(1) {
+        // Skip header row
+        let cols: Vec<&str> = line.split('\t').collect();
+        if cols.is_empty() || cols[0].trim().is_empty() {
+            continue;
+        }
+
+        let name = cols[0].trim().to_string();
+
+        // Parse 24 period columns (months I-XII, each with early/late)
+        let mut sow_periods: i32 = 0;
+        let mut plant_periods: i32 = 0;
+
+        for month_idx in 0..12 {
+            // Each month has 2 columns: early and late
+            let early_col = 1 + month_idx * 2;
+            let late_col = 2 + month_idx * 2;
+
+            if early_col < cols.len() {
+                let val = cols[early_col].trim();
+                if val.contains('Z') {
+                    sow_periods |= 1 << (month_idx * 2);
+                }
+                if val.contains('P') {
+                    plant_periods |= 1 << (month_idx * 2);
+                }
+            }
+
+            if late_col < cols.len() {
+                let val = cols[late_col].trim();
+                if val.contains('Z') {
+                    sow_periods |= 1 << (month_idx * 2 + 1);
+                }
+                if val.contains('P') {
+                    plant_periods |= 1 << (month_idx * 2 + 1);
+                }
+            }
+        }
+
+        conn.execute(
+            "INSERT INTO plants (name, sow_periods, plant_periods) VALUES (?1, ?2, ?3)",
+            (&name, &sow_periods, &plant_periods),
+        ).map_err(|e| e.to_string())?;
+
+        imported += 1;
+    }
+
+    Ok(imported)
+}
+```
+
+**Step 2: Register command in main.rs**
+
+Add to invoke_handler:
+```rust
+commands::import_plants_tsv,
+```
+
+**Step 3: Build to verify**
+
+Run:
+```bash
+cd src-tauri && cargo build
+```
+
+**Step 4: Commit**
+
+```bash
+git add src-tauri/src/commands.rs src-tauri/src/main.rs
+git commit -m "feat: add TSV import command for plant data"
+```
+
+---
+
+### Task 11.2: Add Import Button to Settings
+
+**Files:**
+- Create: `src/components/SettingsView.vue`
+- Modify: `src/api.ts`
+- Modify: `src/App.vue`
+
+**Step 1: Add API function**
+
+Add to `src/api.ts`:
+
+```typescript
+export const importPlantsTsv = (tsvContent: string) =>
+  invoke<number>('import_plants_tsv', { tsvContent });
+```
+
+**Step 2: Create SettingsView component**
+
+Create `src/components/SettingsView.vue`:
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue';
+import { importPlantsTsv } from '../api';
+
+const importing = ref(false);
+const message = ref('');
+
+const handleFileSelect = async (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  if (!input.files?.length) return;
+
+  const file = input.files[0];
+  const content = await file.text();
+
+  importing.value = true;
+  message.value = '';
+
+  try {
+    const count = await importPlantsTsv(content);
+    message.value = `Successfully imported ${count} plants!`;
+  } catch (err) {
+    message.value = `Error: ${err}`;
+  } finally {
+    importing.value = false;
+    input.value = '';
+  }
+};
+</script>
+
+<template>
+  <div class="settings-view">
+    <h1>Settings</h1>
+
+    <div class="section">
+      <h2>Import Data</h2>
+      <p>Import plants from a TSV file (Tab-separated values)</p>
+      <input
+        type="file"
+        accept=".tsv,.txt"
+        @change="handleFileSelect"
+        :disabled="importing"
+      />
+      <p v-if="message" :class="{ error: message.startsWith('Error') }">
+        {{ message }}
+      </p>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.settings-view {
+  padding: 1rem;
+}
+
+.section {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.section h2 {
+  margin-bottom: 0.5rem;
+}
+
+.section p {
+  color: #666;
+  margin-bottom: 1rem;
+}
+
+.error {
+  color: #f44336;
+}
+</style>
+```
+
+**Step 3: Import in App.vue**
+
+Add import:
+```typescript
+import SettingsView from './components/SettingsView.vue';
+```
+
+Replace settings placeholder:
+```vue
+<SettingsView v-else-if="currentView === 'settings'" />
+```
+
+**Step 4: Run and test import**
+
+Run:
+```bash
+npm run tauri dev
+```
+
+Go to Settings, import the `Zaaischema - Planten.tsv` file.
+
+Expected: ~113 plants imported.
+
+**Step 5: Commit**
+
+```bash
+git add src/api.ts src/components/SettingsView.vue src/App.vue
+git commit -m "feat: add TSV import functionality in settings"
+```
+
+---
+
+### Task 11.3: Commit Seed Data File
+
+**Step 1: Add TSV file to repo**
+
+```bash
+git add "Zaaischema - Planten.tsv"
+git commit -m "data: add Dutch planting schedule seed data"
+```
+
+---
+
 ## Summary
 
-This plan builds TuinApp in 10 phases:
+This plan builds TuinApp in 11 phases:
 
 1. **Environment Setup** - Install Rust and Tauri CLI
 2. **Project Scaffolding** - Create Tauri + Vue project
@@ -2842,5 +3080,8 @@ This plan builds TuinApp in 10 phases:
 8. **Monthly Calendar** - Per-month view of tasks
 9. **Photo Handling** - Camera capture and storage
 10. **Final Polish** - Keyboard shortcuts and testing
+11. **Seed Data Import** - Import Dutch planting schedule from TSV
 
 Each task is designed to be completed in 2-5 minutes with clear verification steps.
+
+**Seed Data:** The repository includes `Zaaischema - Planten.tsv` with ~113 Dutch vegetable/flower names and their sowing (Z) and planting (P) schedules.
