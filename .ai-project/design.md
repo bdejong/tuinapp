@@ -1,7 +1,7 @@
 # TuinApp Design Document
 
 **Date:** 2026-02-09
-**Status:** In Progress
+**Status:** Finalized
 
 ## 1. Data Model
 
@@ -48,7 +48,7 @@
 ## 2. Views
 
 ### 2.1 Plant Management View
-- Form to add/edit plants
+- Form to add/edit plants (modal dialog)
 - Name, sun requirement dropdown, notes textarea
 - 24-checkbox grid for sowing periods (visual month/period layout)
 - 24-checkbox grid for planting periods
@@ -61,11 +61,11 @@
 - Cell colors:
   - Green for sowing periods
   - Brown/orange for planting periods
-- Click plant row to edit
+- Click plant row to open edit modal
 
 ### 2.3 Activity Management View
 - List of all activities
-- Form to add/edit activities
+- Form to add/edit activities (modal dialog)
 - Name, description, 24-checkbox grid for active periods
 
 ### 2.4 Monthly Calendar View
@@ -75,32 +75,57 @@
   - Plants to plant this month (early/late subdivisions)
   - Activities for this month
 
-## 3. Technical Architecture
+## 3. Navigation & Layout
 
-### 3.1 Frontend (Vue.js)
+### Main Navigation
+Sidebar or top navigation with four sections:
+1. **Plants** - Plant management and overview grid
+2. **Activities** - Activity management
+3. **Calendar** - Monthly view
+4. **Settings** - Database location, export/import
+
+### Plant Section Tabs
+- "Manage Plants" - list with add/edit/delete
+- "Overview" - grid visualization
+
+### Quick Add & Edit
+- Persistent "+ Add Plant" / "+ Add Activity" buttons in header (visible from any view)
+- Opens modal form for quick entry
+- Same modal used for editing (pre-populated)
+- "Save & Close" vs "Save & Add Another" buttons
+- Delete button in edit modal (with confirmation)
+- Keyboard shortcuts: Ctrl+N / Cmd+N for new, Enter/double-click to edit
+
+## 4. Technical Architecture
+
+### 4.1 Frontend (Vue.js)
 - Vue 3 with Composition API
 - Component structure:
-  - PlantForm.vue
-  - PlantGrid.vue
-  - ActivityForm.vue
-  - ActivityList.vue
-  - MonthlyView.vue
-  - PhotoCapture.vue
-  - PeriodCheckboxGrid.vue (reusable 24-checkbox component)
+  - `PeriodCheckboxGrid.vue` - reusable 24-checkbox month/period selector
+  - `PhotoCapture.vue` - camera access and photo gallery
+  - `PlantForm.vue` - add/edit plant modal
+  - `PlantList.vue` - plant list view
+  - `PlantGrid.vue` - plant overview grid
+  - `ActivityForm.vue` - add/edit activity modal
+  - `ActivityList.vue` - activity list view
+  - `MonthlyView.vue` - calendar view
+  - `AppHeader.vue` - navigation and quick-add buttons
 
-### 3.2 Backend (Tauri/Rust)
-- SQLite database using rusqlite
-- Commands exposed to frontend:
-  - Plant CRUD operations
-  - Photo capture/storage
-  - Activity CRUD operations
-  - Query helpers for monthly view
+### 4.2 Backend (Tauri/Rust)
+- SQLite database using `rusqlite` crate
+- Tauri commands exposed to frontend:
+  - `create_plant`, `update_plant`, `delete_plant`, `get_all_plants`, `get_plant`
+  - `add_photo`, `delete_photo`, `reorder_photos`, `get_photos`
+  - `create_activity`, `update_activity`, `delete_activity`, `get_all_activities`
+  - `get_month_data(month)` - returns plants/activities for a specific month
+  - `get_database_path`, `set_database_path`
 
-### 3.3 Camera Integration
-- Use HTML5 MediaDevices API in frontend
-- Capture photo as base64
-- Send to Rust backend for storage in SQLite
+### 4.3 Camera Integration
+- HTML5 `navigator.mediaDevices.getUserMedia()` in frontend
+- Capture frame to canvas, convert to base64
+- Send to Rust backend which stores as BLOB in SQLite
 
-## 4. Open Questions
-
-(To be filled in as design progresses)
+### 4.4 Database Location
+- Stored in user-chosen location (or default app data folder)
+- Single `.db` file for easy backup to Google Drive
+- Settings view allows changing database location
