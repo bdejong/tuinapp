@@ -29,3 +29,7 @@ export const getPhotos = (plantId: number) => invoke<PlantPhoto[]>('get_photos',
 export const addPhoto = (plantId: number, imageData: string, sortOrder: number) =>
   invoke<PlantPhoto>('add_photo', { plantId, imageData, sortOrder });
 export const deletePhoto = (id: number) => invoke<void>('delete_photo', { id });
+
+// Import
+export const importPlantsTsv = (tsvContent: string) =>
+  invoke<number>('import_plants_tsv', { tsvContent });

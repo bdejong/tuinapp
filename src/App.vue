@@ -4,6 +4,7 @@ import PlantList from './components/PlantList.vue';
 import PlantGrid from './components/PlantGrid.vue';
 import ActivityList from './components/ActivityList.vue';
 import MonthlyView from './components/MonthlyView.vue';
+import SettingsView from './components/SettingsView.vue';
 
 type View = 'plants' | 'activities' | 'calendar' | 'settings';
 type PlantSubView = 'list' | 'grid';
@@ -82,7 +83,7 @@ onUnmounted(() => {
       </div>
       <ActivityList v-else-if="currentView === 'activities'" ref="activityListRef" />
       <MonthlyView v-else-if="currentView === 'calendar'" />
-      <div v-else-if="currentView === 'settings'" class="placeholder">Settings (coming soon)</div>
+      <SettingsView v-else-if="currentView === 'settings'" />
     </main>
   </div>
 </template>
