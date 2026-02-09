@@ -1,5 +1,6 @@
 use crate::db::Database;
 use crate::models::{Activity, Plant};
+use serde::Serialize;
 use tauri::State;
 
 #[tauri::command]
@@ -133,4 +134,93 @@ pub fn delete_activity(db: State<Database>, id: i64) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+#[derive(Debug, Serialize)]
+pub struct MonthData {
+    pub sow_early: Vec<Plant>,
+    pub sow_late: Vec<Plant>,
+    pub plant_early: Vec<Plant>,
+    pub plant_late: Vec<Plant>,
+    pub activities: Vec<Activity>,
+}
+
+#[tauri::command]
+pub fn get_month_data(db: State<Database>, month: u32) -> Result<MonthData, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+
+    let early_bit = 1 << ((month - 1) * 2);
+    let late_bit = 1 << ((month - 1) * 2 + 1);
+
+    let get_plants = |sql: &str| -> Result<Vec<Plant>, String> {
+        let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+        let result = stmt.query_map([], |row| {
+            Ok(Plant {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                plant_type: row.get(2)?,
+                sun_requirement: row.get(3)?,
+                sow_periods: row.get(4)?,
+                plant_periods: row.get(5)?,
+                notes: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string());
+        result
+    };
+
+    let sow_early = get_plants(&format!(
+        "SELECT id, name, plant_type, sun_requirement, sow_periods, plant_periods, notes, created_at, updated_at FROM plants WHERE (sow_periods & {}) != 0 ORDER BY name",
+        early_bit
+    ))?;
+
+    let sow_late = get_plants(&format!(
+        "SELECT id, name, plant_type, sun_requirement, sow_periods, plant_periods, notes, created_at, updated_at FROM plants WHERE (sow_periods & {}) != 0 ORDER BY name",
+        late_bit
+    ))?;
+
+    let plant_early = get_plants(&format!(
+        "SELECT id, name, plant_type, sun_requirement, sow_periods, plant_periods, notes, created_at, updated_at FROM plants WHERE (plant_periods & {}) != 0 ORDER BY name",
+        early_bit
+    ))?;
+
+    let plant_late = get_plants(&format!(
+        "SELECT id, name, plant_type, sun_requirement, sow_periods, plant_periods, notes, created_at, updated_at FROM plants WHERE (plant_periods & {}) != 0 ORDER BY name",
+        late_bit
+    ))?;
+
+    let month_bits = early_bit | late_bit;
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT id, name, description, active_periods, created_at, updated_at FROM activities WHERE (active_periods & {}) != 0 ORDER BY name",
+            month_bits
+        ))
+        .map_err(|e| e.to_string())?;
+
+    let activities = stmt
+        .query_map([], |row| {
+            Ok(Activity {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                active_periods: row.get(3)?,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    Ok(MonthData {
+        sow_early,
+        sow_late,
+        plant_early,
+        plant_late,
+        activities,
+    })
 }

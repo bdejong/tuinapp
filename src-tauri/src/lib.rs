@@ -30,6 +30,7 @@ pub fn run() {
             commands::create_activity,
             commands::update_activity,
             commands::delete_activity,
+            commands::get_month_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
