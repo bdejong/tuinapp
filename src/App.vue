@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import PlantList from './components/PlantList.vue';
+import PlantGrid from './components/PlantGrid.vue';
 import ActivityList from './components/ActivityList.vue';
 
 type View = 'plants' | 'activities' | 'calendar' | 'settings';
+type PlantSubView = 'list' | 'grid';
 
 const currentView = ref<View>('plants');
+const plantSubView = ref<PlantSubView>('list');
 const plantListRef = ref<InstanceType<typeof PlantList> | null>(null);
 const activityListRef = ref<InstanceType<typeof ActivityList> | null>(null);
 
@@ -49,7 +52,14 @@ const handleAddActivity = () => {
     </nav>
 
     <main class="content">
-      <PlantList v-if="currentView === 'plants'" ref="plantListRef" />
+      <div v-if="currentView === 'plants'" class="plants-container">
+        <div class="tabs">
+          <button :class="{ active: plantSubView === 'list' }" @click="plantSubView = 'list'">Manage</button>
+          <button :class="{ active: plantSubView === 'grid' }" @click="plantSubView = 'grid'">Overview</button>
+        </div>
+        <PlantList v-if="plantSubView === 'list'" ref="plantListRef" />
+        <PlantGrid v-else @edit="(plant) => { plantSubView = 'list'; plantListRef?.openEditForm(plant); }" />
+      </div>
       <ActivityList v-else-if="currentView === 'activities'" ref="activityListRef" />
       <div v-else-if="currentView === 'calendar'" class="placeholder">Calendar (coming soon)</div>
       <div v-else-if="currentView === 'settings'" class="placeholder">Settings (coming soon)</div>
@@ -127,6 +137,33 @@ body {
   flex: 1;
   overflow-y: auto;
   background: #fafafa;
+}
+
+.plants-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.tabs {
+  display: flex;
+  padding: 0.5rem 1rem;
+  gap: 0.5rem;
+  background: white;
+  border-bottom: 1px solid #eee;
+}
+
+.tabs button {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: #e0e0e0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.tabs button.active {
+  background: #4caf50;
+  color: white;
 }
 
 .placeholder {
