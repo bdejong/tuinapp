@@ -7,11 +7,22 @@ export const createPlant = (plant: Plant) => invoke<Plant>('create_plant', { pla
 export const updatePlant = (plant: Plant) => invoke<void>('update_plant', { plant });
 export const deletePlant = (id: number) => invoke<void>('delete_plant', { id });
 
-// Activities (to be implemented)
+// Activities
 export const getAllActivities = () => invoke<Activity[]>('get_all_activities');
 export const createActivity = (activity: Activity) => invoke<Activity>('create_activity', { activity });
 export const updateActivity = (activity: Activity) => invoke<void>('update_activity', { activity });
 export const deleteActivity = (id: number) => invoke<void>('delete_activity', { id });
+
+// Calendar
+export interface MonthData {
+  sow_early: Plant[];
+  sow_late: Plant[];
+  plant_early: Plant[];
+  plant_late: Plant[];
+  activities: Activity[];
+}
+
+export const getMonthData = (month: number) => invoke<MonthData>('get_month_data', { month });
 
 // Photos (to be implemented)
 export const getPhotos = (plantId: number) => invoke<PlantPhoto[]>('get_photos', { plantId });
