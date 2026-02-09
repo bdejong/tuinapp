@@ -11,6 +11,7 @@ const photos = ref<PlantPhoto[]>([]);
 const videoRef = ref<HTMLVideoElement | null>(null);
 const stream = ref<MediaStream | null>(null);
 const showCamera = ref(false);
+const enlargedPhoto = ref<PlantPhoto | null>(null);
 
 const loadPhotos = async () => {
   if (props.plantId) {
@@ -72,11 +73,24 @@ const capturePhoto = async () => {
   await loadPhotos();
 };
 
-const handleDeletePhoto = async (id: number) => {
+const handleDeletePhoto = async (event: Event, id: number) => {
+  event.stopPropagation();
   if (confirm('Delete this photo?')) {
     await deletePhoto(id);
     await loadPhotos();
+    // Close enlarged view if we deleted the currently viewed photo
+    if (enlargedPhoto.value?.id === id) {
+      enlargedPhoto.value = null;
+    }
   }
+};
+
+const openEnlargedView = (photo: PlantPhoto) => {
+  enlargedPhoto.value = photo;
+};
+
+const closeEnlargedView = () => {
+  enlargedPhoto.value = null;
 };
 
 onUnmounted(stopCamera);
@@ -85,21 +99,39 @@ onUnmounted(stopCamera);
 <template>
   <div class="photo-capture">
     <div class="photos-grid">
-      <div v-for="photo in photos" :key="photo.id" class="photo-item">
+      <div
+        v-for="photo in photos"
+        :key="photo.id"
+        class="photo-item"
+        @click="openEnlargedView(photo)"
+      >
         <img :src="'data:image/jpeg;base64,' + photo.image_data" alt="Plant photo" />
-        <button class="delete-btn" @click="handleDeletePhoto(photo.id!)">×</button>
+        <button class="delete-btn" @click="(e) => handleDeletePhoto(e, photo.id!)">×</button>
       </div>
 
       <div v-if="!showCamera" class="add-photo" @click="startCamera">
-        <span>+ Add Photo</span>
+        <span>📷 Add</span>
       </div>
     </div>
 
     <div v-if="showCamera" class="camera-container">
       <video ref="videoRef" autoplay playsinline></video>
       <div class="camera-controls">
-        <button @click="capturePhoto">Capture</button>
+        <button @click="capturePhoto">📸 Capture</button>
         <button @click="stopCamera">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Enlarged photo modal -->
+    <div v-if="enlargedPhoto" class="photo-modal" @click="closeEnlargedView">
+      <div class="photo-modal-content" @click.stop>
+        <img :src="'data:image/jpeg;base64,' + enlargedPhoto.image_data" alt="Enlarged photo" />
+        <div class="photo-modal-controls">
+          <button class="delete-btn-large" @click="(e) => handleDeletePhoto(e, enlargedPhoto!.id!)">
+            🗑️ Delete
+          </button>
+          <button @click="closeEnlargedView">Close</button>
+        </div>
       </div>
     </div>
   </div>
@@ -120,6 +152,11 @@ onUnmounted(stopCamera);
   position: relative;
   width: 100px;
   height: 100px;
+  cursor: pointer;
+}
+
+.photo-item:hover {
+  opacity: 0.9;
 }
 
 .photo-item img {
@@ -133,15 +170,23 @@ onUnmounted(stopCamera);
   position: absolute;
   top: 2px;
   right: 2px;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border: none;
-  background: rgba(255, 0, 0, 0.8);
+  background: rgba(255, 0, 0, 0.9);
   color: white;
   border-radius: 50%;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.photo-item .delete-btn:hover {
+  background: rgba(255, 0, 0, 1);
+  transform: scale(1.1);
 }
 
 .add-photo {
@@ -154,6 +199,7 @@ onUnmounted(stopCamera);
   justify-content: center;
   cursor: pointer;
   color: #666;
+  font-size: 0.9rem;
 }
 
 .add-photo:hover {
@@ -169,6 +215,7 @@ onUnmounted(stopCamera);
   width: 100%;
   max-width: 400px;
   border-radius: 4px;
+  background: #000;
 }
 
 .camera-controls {
@@ -191,5 +238,65 @@ onUnmounted(stopCamera);
 
 .camera-controls button:last-child {
   background: #e0e0e0;
+}
+
+/* Photo modal styles */
+.photo-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.photo-modal-content {
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.photo-modal-content img {
+  max-width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.photo-modal-controls {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.photo-modal-controls button {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.delete-btn-large {
+  background: #f44336;
+  color: white;
+}
+
+.delete-btn-large:hover {
+  background: #d32f2f;
+}
+
+.photo-modal-controls button:last-child {
+  background: #e0e0e0;
+}
+
+.photo-modal-controls button:last-child:hover {
+  background: #d0d0d0;
 }
 </style>

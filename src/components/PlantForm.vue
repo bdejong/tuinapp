@@ -76,9 +76,11 @@ const handleDelete = () => {
             :key="opt.value"
             type="button"
             :class="{ selected: form.plant_type === opt.value }"
+            :title="opt.label"
             @click="form.plant_type = form.plant_type === opt.value ? undefined : opt.value"
           >
-            {{ opt.label }}
+            <span class="icon">{{ opt.icon }}</span>
+            <span class="label">{{ opt.label }}</span>
           </button>
         </div>
       </div>
@@ -91,9 +93,11 @@ const handleDelete = () => {
             :key="opt.value"
             type="button"
             :class="{ selected: form.sun_requirement === opt.value }"
+            :title="opt.label"
             @click="form.sun_requirement = form.sun_requirement === opt.value ? undefined : opt.value"
           >
-            {{ opt.label }}
+            <span class="icon">{{ opt.icon }}</span>
+            <span class="label">{{ opt.label }}</span>
           </button>
         </div>
       </div>
@@ -219,5 +223,14 @@ button {
   background: #4caf50;
   color: white;
   border-color: #4caf50;
+}
+
+.button-group button .icon {
+  font-size: 1.25rem;
+  margin-right: 0.25rem;
+}
+
+.button-group button .label {
+  font-size: 0.875rem;
 }
 </style>
