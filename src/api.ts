@@ -24,7 +24,7 @@ export interface MonthData {
 
 export const getMonthData = (month: number) => invoke<MonthData>('get_month_data', { month });
 
-// Photos (to be implemented)
+// Photos
 export const getPhotos = (plantId: number) => invoke<PlantPhoto[]>('get_photos', { plantId });
 export const addPhoto = (plantId: number, imageData: string, sortOrder: number) =>
   invoke<PlantPhoto>('add_photo', { plantId, imageData, sortOrder });
