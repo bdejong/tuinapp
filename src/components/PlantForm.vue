@@ -3,6 +3,7 @@ import { ref, watch } from 'vue';
 import type { Plant } from '../types';
 import { SUN_REQUIREMENTS, PLANT_TYPES } from '../types';
 import PeriodCheckboxGrid from './PeriodCheckboxGrid.vue';
+import PhotoCapture from './PhotoCapture.vue';
 
 const props = defineProps<{
   plant?: Plant;
@@ -93,6 +94,11 @@ const handleDelete = () => {
       <div class="form-group">
         <label>Notes</label>
         <textarea v-model="form.notes" rows="3" placeholder="Optional notes"></textarea>
+      </div>
+
+      <div v-if="isEditing()" class="form-group">
+        <label>Photos</label>
+        <PhotoCapture :plant-id="plant?.id" />
       </div>
 
       <div class="button-row">
