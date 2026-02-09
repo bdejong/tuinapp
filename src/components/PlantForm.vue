@@ -116,11 +116,11 @@ const handleDelete = () => {
       </div>
 
       <div class="button-row">
-        <button v-if="isEditing()" class="delete-btn" @click="handleDelete">Delete</button>
+        <button v-if="isEditing()" type="button" class="delete-btn" @click="handleDelete">Delete</button>
         <div class="spacer"></div>
-        <button class="secondary-btn" @click="emit('close')">Cancel</button>
-        <button v-if="!isEditing()" class="secondary-btn" @click="handleSaveAndAdd">Save & Add Another</button>
-        <button class="primary-btn" @click="handleSave">{{ isEditing() ? 'Save' : 'Save & Close' }}</button>
+        <button type="button" class="secondary-btn" @click="emit('close')">Cancel</button>
+        <button v-if="!isEditing()" type="button" class="secondary-btn" @click="handleSaveAndAdd">Save & Add Another</button>
+        <button type="button" class="primary-btn" @click="handleSave">{{ isEditing() ? 'Save' : 'Save & Close' }}</button>
       </div>
     </div>
   </div>

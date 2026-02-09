@@ -54,23 +54,44 @@ const stopCamera = () => {
 };
 
 const capturePhoto = async () => {
-  if (!videoRef.value || !props.plantId) return;
+  if (!videoRef.value || !props.plantId) {
+    alert('Cannot capture: video or plant not ready');
+    return;
+  }
 
-  const canvas = document.createElement('canvas');
-  canvas.width = videoRef.value.videoWidth;
-  canvas.height = videoRef.value.videoHeight;
+  const video = videoRef.value;
 
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
+  // Check if video has dimensions
+  if (video.videoWidth === 0 || video.videoHeight === 0) {
+    alert('Video not ready yet. Please wait a moment and try again.');
+    return;
+  }
 
-  ctx.drawImage(videoRef.value, 0, 0);
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
 
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-  const base64 = dataUrl.split(',')[1];
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      alert('Could not create canvas context');
+      return;
+    }
 
-  const sortOrder = photos.value.length + 1;
-  await addPhoto(props.plantId, base64, sortOrder);
-  await loadPhotos();
+    ctx.drawImage(video, 0, 0);
+
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    const base64 = dataUrl.split(',')[1];
+
+    const sortOrder = photos.value.length + 1;
+    await addPhoto(props.plantId, base64, sortOrder);
+    await loadPhotos();
+
+    // Stop camera after successful capture
+    stopCamera();
+  } catch (err) {
+    alert('Failed to capture photo: ' + err);
+  }
 };
 
 const handleDeletePhoto = async (event: Event, id: number) => {
