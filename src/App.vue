@@ -1,17 +1,26 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import PlantList from './components/PlantList.vue';
+import ActivityList from './components/ActivityList.vue';
 
 type View = 'plants' | 'activities' | 'calendar' | 'settings';
 
 const currentView = ref<View>('plants');
 const plantListRef = ref<InstanceType<typeof PlantList> | null>(null);
+const activityListRef = ref<InstanceType<typeof ActivityList> | null>(null);
 
 const handleAddPlant = () => {
   if (currentView.value !== 'plants') {
     currentView.value = 'plants';
   }
   setTimeout(() => plantListRef.value?.openAddForm(), 0);
+};
+
+const handleAddActivity = () => {
+  if (currentView.value !== 'activities') {
+    currentView.value = 'activities';
+  }
+  setTimeout(() => activityListRef.value?.openAddForm(), 0);
 };
 </script>
 
@@ -35,13 +44,13 @@ const handleAddPlant = () => {
       </ul>
       <div class="quick-add">
         <button @click="handleAddPlant">+ Add Plant</button>
-        <button>+ Add Activity</button>
+        <button @click="handleAddActivity">+ Add Activity</button>
       </div>
     </nav>
 
     <main class="content">
       <PlantList v-if="currentView === 'plants'" ref="plantListRef" />
-      <div v-else-if="currentView === 'activities'" class="placeholder">Activities (coming soon)</div>
+      <ActivityList v-else-if="currentView === 'activities'" ref="activityListRef" />
       <div v-else-if="currentView === 'calendar'" class="placeholder">Calendar (coming soon)</div>
       <div v-else-if="currentView === 'settings'" class="placeholder">Settings (coming soon)</div>
     </main>
