@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import PlantList from './components/PlantList.vue';
 import PlantGrid from './components/PlantGrid.vue';
 import ActivityList from './components/ActivityList.vue';
@@ -26,6 +26,25 @@ const handleAddActivity = () => {
   }
   setTimeout(() => activityListRef.value?.openAddForm(), 0);
 };
+
+const handleKeydown = (e: KeyboardEvent) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+    e.preventDefault();
+    if (currentView.value === 'activities') {
+      handleAddActivity();
+    } else {
+      handleAddPlant();
+    }
+  }
+};
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown);
+});
 </script>
 
 <template>
