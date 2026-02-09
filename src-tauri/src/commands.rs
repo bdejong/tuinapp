@@ -285,3 +285,62 @@ pub fn delete_photo(db: State<Database>, id: i64) -> Result<(), String> {
 
     Ok(())
 }
+
+#[tauri::command]
+pub fn import_plants_tsv(db: State<Database>, tsv_content: String) -> Result<u32, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+
+    let lines: Vec<&str> = tsv_content.lines().collect();
+    if lines.is_empty() {
+        return Ok(0);
+    }
+
+    let mut imported = 0;
+
+    // Skip header row (line 0)
+    for line in lines.iter().skip(1) {
+        let cols: Vec<&str> = line.split('\t').collect();
+        if cols.is_empty() || cols[0].trim().is_empty() {
+            continue;
+        }
+
+        let name = cols[0].trim().to_string();
+
+        let mut sow_periods: i32 = 0;
+        let mut plant_periods: i32 = 0;
+
+        for month_idx in 0..12 {
+            let early_col = 1 + month_idx * 2;
+            let late_col = 2 + month_idx * 2;
+
+            if early_col < cols.len() {
+                let val = cols[early_col].trim();
+                if val.contains('Z') {
+                    sow_periods |= 1 << (month_idx * 2);
+                }
+                if val.contains('P') {
+                    plant_periods |= 1 << (month_idx * 2);
+                }
+            }
+
+            if late_col < cols.len() {
+                let val = cols[late_col].trim();
+                if val.contains('Z') {
+                    sow_periods |= 1 << (month_idx * 2 + 1);
+                }
+                if val.contains('P') {
+                    plant_periods |= 1 << (month_idx * 2 + 1);
+                }
+            }
+        }
+
+        conn.execute(
+            "INSERT INTO plants (name, sow_periods, plant_periods) VALUES (?1, ?2, ?3)",
+            (&name, &sow_periods, &plant_periods),
+        ).map_err(|e| e.to_string())?;
+
+        imported += 1;
+    }
+
+    Ok(imported)
+}

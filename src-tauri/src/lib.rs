@@ -34,6 +34,7 @@ pub fn run() {
             commands::get_photos,
             commands::add_photo,
             commands::delete_photo,
+            commands::import_plants_tsv,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
