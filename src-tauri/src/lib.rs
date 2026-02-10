@@ -10,6 +10,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             let db_path = get_db_path(&app.handle());
             let database = Database::new(&db_path).expect("Failed to open database");
@@ -38,6 +39,7 @@ pub fn run() {
             commands::import_plants_tsv,
             commands::get_database_path,
             commands::move_database,
+            commands::generate_pdf,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

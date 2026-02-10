@@ -1,8 +1,12 @@
 use crate::db::{save_config, AppConfig, Database};
 use crate::models::{Activity, Plant, PlantPhoto};
 use base64::{engine::general_purpose::STANDARD, Engine};
-use serde::Serialize;
+use printpdf::*;
+use serde::{Deserialize, Serialize};
+use std::fs::File;
+use std::io::BufWriter;
 use std::path::PathBuf;
+use std::process::Command;
 use tauri::{AppHandle, State};
 
 #[tauri::command]
@@ -375,4 +379,176 @@ pub fn move_database(
     save_config(&app, &config).map_err(|e| format!("Failed to save config: {}", e))?;
 
     Ok("Database moved. Please restart the app to use the new location.".to_string())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CategoryData {
+    pub vegetables: Vec<String>,
+    pub flowers: Vec<String>,
+    pub herbs: Vec<String>,
+    pub other: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrintData {
+    pub month_name: String,
+    pub sow_early: CategoryData,
+    pub sow_late: CategoryData,
+    pub plant_early: CategoryData,
+    pub plant_late: CategoryData,
+    pub activities: Vec<String>,
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn generate_pdf(data: PrintData) -> Result<String, String> {
+    let temp_dir = std::env::temp_dir();
+    let pdf_path = temp_dir.join(format!("garden-planner-{}.pdf", data.month_name.to_lowercase()));
+
+    // A4 size in mm
+    let (doc, page1, layer1) = PdfDocument::new(
+        &format!("Garden Planner - {}", data.month_name),
+        Mm(210.0),
+        Mm(297.0),
+        "Layer 1",
+    );
+
+    let font = doc.add_builtin_font(BuiltinFont::Helvetica).map_err(|e| e.to_string())?;
+    let font_bold = doc.add_builtin_font(BuiltinFont::HelveticaBold).map_err(|e| e.to_string())?;
+
+    // Three-column layout (one per category)
+    let col1_x = Mm(10.0);   // Vegetables
+    let col2_x = Mm(75.0);   // Flowers
+    let col3_x = Mm(140.0);  // Herbs
+    let line_height = Mm(2.8);
+    let bottom_margin = Mm(12.0);
+    let top_start = Mm(290.0);
+
+    let mut y = top_start;
+    let mut current_page = page1;
+    let mut current_layer_idx = layer1;
+
+    macro_rules! layer {
+        () => { doc.get_page(current_page).get_layer(current_layer_idx) };
+    }
+
+    macro_rules! new_page {
+        () => {{
+            let (new_page, new_layer) = doc.add_page(Mm(210.0), Mm(297.0), "Layer 1");
+            current_page = new_page;
+            current_layer_idx = new_layer;
+            y = top_start;
+        }};
+    }
+
+    macro_rules! check_page {
+        () => { if y < bottom_margin { new_page!(); } };
+    }
+
+    // Helper to draw items in a column
+    let draw_items = |layer: &PdfLayerReference, items: &[String], x: Mm, mut y: Mm| -> Mm {
+        for item in items {
+            let display = if item.len() > 28 { format!("{}...", &item[..25]) } else { item.clone() };
+            layer.use_text(&format!("• {}", display), 5.5, x, y, &font);
+            y = y - line_height;
+        }
+        y
+    };
+
+    // Helper to draw a time period (Early/Late) with 3 category columns
+    let draw_period = |layer: &PdfLayerReference, veg: &[String], flow: &[String], herb: &[String], x1: Mm, x2: Mm, x3: Mm, mut y: Mm| -> Mm {
+        let start_y = y;
+        let y1 = if veg.is_empty() { y } else { draw_items(layer, veg, x1, y) };
+        let y2 = if flow.is_empty() { start_y } else { draw_items(layer, flow, x2, start_y) };
+        let y3 = if herb.is_empty() { start_y } else { draw_items(layer, herb, x3, start_y) };
+        *[y1, y2, y3].iter().min_by(|a, b| a.0.partial_cmp(&b.0).unwrap()).unwrap()
+    };
+
+    // === SOW THIS MONTH ===
+    layer!().use_text("Sow This Month", 11.0, col1_x, y, &font_bold);
+    y = y - Mm(5.0);
+
+    // Early sow
+    layer!().use_text(&format!("Early {}", data.month_name), 8.0, col1_x, y, &font_bold);
+    y = y - Mm(3.5);
+
+    layer!().use_text("Vegetables", 6.5, col1_x, y, &font_bold);
+    layer!().use_text("Flowers", 6.5, col2_x, y, &font_bold);
+    layer!().use_text("Herbs", 6.5, col3_x, y, &font_bold);
+    y = y - Mm(3.0);
+
+    y = draw_period(&layer!(), &data.sow_early.vegetables, &data.sow_early.flowers, &data.sow_early.herbs, col1_x, col2_x, col3_x, y);
+    y = y - Mm(3.0);
+    check_page!();
+
+    // Late sow
+    layer!().use_text(&format!("Late {}", data.month_name), 8.0, col1_x, y, &font_bold);
+    y = y - Mm(3.5);
+
+    layer!().use_text("Vegetables", 6.5, col1_x, y, &font_bold);
+    layer!().use_text("Flowers", 6.5, col2_x, y, &font_bold);
+    layer!().use_text("Herbs", 6.5, col3_x, y, &font_bold);
+    y = y - Mm(3.0);
+
+    y = draw_period(&layer!(), &data.sow_late.vegetables, &data.sow_late.flowers, &data.sow_late.herbs, col1_x, col2_x, col3_x, y);
+    y = y - Mm(5.0);
+    check_page!();
+
+    // === PLANT THIS MONTH ===
+    layer!().use_text("Plant This Month", 11.0, col1_x, y, &font_bold);
+    y = y - Mm(5.0);
+
+    // Early plant
+    layer!().use_text(&format!("Early {}", data.month_name), 8.0, col1_x, y, &font_bold);
+    y = y - Mm(3.5);
+
+    layer!().use_text("Vegetables", 6.5, col1_x, y, &font_bold);
+    layer!().use_text("Flowers", 6.5, col2_x, y, &font_bold);
+    layer!().use_text("Herbs", 6.5, col3_x, y, &font_bold);
+    y = y - Mm(3.0);
+
+    y = draw_period(&layer!(), &data.plant_early.vegetables, &data.plant_early.flowers, &data.plant_early.herbs, col1_x, col2_x, col3_x, y);
+    y = y - Mm(3.0);
+    check_page!();
+
+    // Late plant
+    layer!().use_text(&format!("Late {}", data.month_name), 8.0, col1_x, y, &font_bold);
+    y = y - Mm(3.5);
+
+    layer!().use_text("Vegetables", 6.5, col1_x, y, &font_bold);
+    layer!().use_text("Flowers", 6.5, col2_x, y, &font_bold);
+    layer!().use_text("Herbs", 6.5, col3_x, y, &font_bold);
+    y = y - Mm(3.0);
+
+    y = draw_period(&layer!(), &data.plant_late.vegetables, &data.plant_late.flowers, &data.plant_late.herbs, col1_x, col2_x, col3_x, y);
+    y = y - Mm(5.0);
+    check_page!();
+
+    // === ACTIVITIES ===
+    layer!().use_text("Activities", 11.0, col1_x, y, &font_bold);
+    y = y - Mm(4.0);
+
+    if data.activities.is_empty() {
+        layer!().use_text("No activities this month", 5.5, col1_x, y, &font);
+    } else {
+        for activity in &data.activities {
+            check_page!();
+            let display = if activity.len() > 100 { format!("{}...", &activity[..97]) } else { activity.clone() };
+            layer!().use_text(&format!("• {}", display), 5.5, col1_x, y, &font);
+            y = y - line_height;
+        }
+    }
+
+    // Save PDF
+    let file = File::create(&pdf_path).map_err(|e| format!("Failed to create PDF file: {}", e))?;
+    doc.save(&mut BufWriter::new(file)).map_err(|e| format!("Failed to save PDF: {}", e))?;
+
+    // Open the PDF
+    Command::new("open")
+        .arg(pdf_path.to_str().unwrap())
+        .spawn()
+        .map_err(|e| format!("Failed to open PDF: {}", e))?;
+
+    Ok(pdf_path.to_string_lossy().to_string())
 }
