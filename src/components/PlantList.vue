@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import type { Plant } from '../types';
+import { ref, computed, onMounted } from 'vue';
+import type { Plant, PlantPhoto } from '../types';
 import { PLANT_TYPES, SUN_REQUIREMENTS } from '../types';
-import { getAllPlants, createPlant, updatePlant, deletePlant } from '../api';
+import { getAllPlants, createPlant, updatePlant, deletePlant, getPhotos } from '../api';
 import PlantForm from './PlantForm.vue';
 
 const getTypeIcon = (type: string | undefined): string => {
@@ -16,11 +16,32 @@ const getSunIcon = (sun: string | undefined): string => {
 };
 
 const plants = ref<Plant[]>([]);
+const plantPhotos = ref<Map<number, PlantPhoto[]>>(new Map());
 const showForm = ref(false);
 const editingPlant = ref<Plant | undefined>();
+const searchQuery = ref('');
+const enlargedPhotos = ref<PlantPhoto[]>([]);
+const currentPhotoIndex = ref(0);
+
+const filteredPlants = computed(() => {
+  if (!searchQuery.value.trim()) return plants.value;
+  const query = searchQuery.value.toLowerCase();
+  return plants.value.filter(plant =>
+    plant.name.toLowerCase().includes(query)
+  );
+});
 
 const loadPlants = async () => {
   plants.value = await getAllPlants();
+  // Load all photos for each plant
+  for (const plant of plants.value) {
+    if (plant.id) {
+      const photos = await getPhotos(plant.id);
+      if (photos.length > 0) {
+        plantPhotos.value.set(plant.id, photos);
+      }
+    }
+  }
 };
 
 onMounted(loadPlants);
@@ -57,10 +78,35 @@ const handleDelete = async (id: number) => {
   showForm.value = false;
 };
 
-const truncateNotes = (notes: string | undefined, maxLength = 50): string => {
-  if (!notes) return '-';
-  if (notes.length <= maxLength) return notes;
-  return notes.substring(0, maxLength) + '...';
+const getPlantPhotos = (plantId: number | undefined): PlantPhoto[] => {
+  if (!plantId) return [];
+  return plantPhotos.value.get(plantId) || [];
+};
+
+const openEnlargedPhotos = (event: Event, plantId: number) => {
+  event.stopPropagation();
+  const photos = getPlantPhotos(plantId);
+  if (photos.length > 0) {
+    enlargedPhotos.value = photos;
+    currentPhotoIndex.value = 0;
+  }
+};
+
+const closeEnlargedPhotos = () => {
+  enlargedPhotos.value = [];
+  currentPhotoIndex.value = 0;
+};
+
+const nextPhoto = () => {
+  if (currentPhotoIndex.value < enlargedPhotos.value.length - 1) {
+    currentPhotoIndex.value++;
+  }
+};
+
+const prevPhoto = () => {
+  if (currentPhotoIndex.value > 0) {
+    currentPhotoIndex.value--;
+  }
 };
 
 defineExpose({ openAddForm, openEditForm });
@@ -73,26 +119,72 @@ defineExpose({ openAddForm, openEditForm });
       <button class="add-btn" @click="openAddForm">+ Add Plant</button>
     </div>
 
-    <table v-if="plants.length > 0">
+    <div class="search-bar">
+      <input
+        v-model="searchQuery"
+        type="text"
+        placeholder="Search plants..."
+        class="search-input"
+      />
+    </div>
+
+    <table v-if="filteredPlants.length > 0">
       <thead>
         <tr>
+          <th class="photo-header">Photo</th>
           <th>Name</th>
           <th class="icon-header">Type</th>
           <th class="icon-header">Sun</th>
-          <th>Notes</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="plant in plants" :key="plant.id" @click="openEditForm(plant)">
+        <tr v-for="plant in filteredPlants" :key="plant.id" @click="openEditForm(plant)">
+          <td class="photo-cell">
+            <span
+              v-if="getPlantPhotos(plant.id).length > 0"
+              class="photo-icon"
+              @click="(e) => openEnlargedPhotos(e, plant.id!)"
+              :title="getPlantPhotos(plant.id).length + ' photo(s)'"
+            >📷</span>
+            <span v-else class="no-photo">-</span>
+          </td>
           <td>{{ plant.name }}</td>
           <td class="icon-cell" :title="plant.plant_type?.replace('_', '/')">{{ getTypeIcon(plant.plant_type) }}</td>
           <td class="icon-cell" :title="plant.sun_requirement?.replace('_', ' ')">{{ getSunIcon(plant.sun_requirement) }}</td>
-          <td :title="plant.notes">{{ truncateNotes(plant.notes) }}</td>
         </tr>
       </tbody>
     </table>
 
+    <p v-else-if="plants.length > 0" class="empty">No plants match your search.</p>
     <p v-else class="empty">No plants yet. Add your first plant!</p>
+
+    <!-- Enlarged photo modal -->
+    <div v-if="enlargedPhotos.length > 0" class="photo-modal" @click="closeEnlargedPhotos">
+      <div class="photo-modal-content" @click.stop>
+        <div class="photo-nav">
+          <button
+            v-if="enlargedPhotos.length > 1"
+            class="nav-btn prev"
+            :disabled="currentPhotoIndex === 0"
+            @click="prevPhoto"
+          >&lt;</button>
+          <img
+            :src="'data:image/jpeg;base64,' + enlargedPhotos[currentPhotoIndex].image_data"
+            alt="Enlarged photo"
+          />
+          <button
+            v-if="enlargedPhotos.length > 1"
+            class="nav-btn next"
+            :disabled="currentPhotoIndex === enlargedPhotos.length - 1"
+            @click="nextPhoto"
+          >&gt;</button>
+        </div>
+        <div class="photo-info">
+          <span v-if="enlargedPhotos.length > 1">{{ currentPhotoIndex + 1 }} / {{ enlargedPhotos.length }}</span>
+        </div>
+        <button class="close-btn" @click="closeEnlargedPhotos">Close</button>
+      </div>
+    </div>
 
     <PlantForm
       :visible="showForm"
@@ -132,6 +224,24 @@ defineExpose({ openAddForm, openEditForm });
   font-size: 0.8rem;
 }
 
+.search-bar {
+  margin-bottom: 0.75rem;
+}
+
+.search-input {
+  width: 100%;
+  max-width: 300px;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #4caf50;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -155,6 +265,29 @@ th {
   width: 50px;
 }
 
+.photo-header {
+  text-align: center;
+  width: 50px;
+}
+
+.photo-cell {
+  text-align: center;
+}
+
+.photo-icon {
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.photo-icon:hover {
+  transform: scale(1.2);
+  display: inline-block;
+}
+
+.no-photo {
+  color: #ccc;
+}
+
 tbody tr {
   cursor: pointer;
 }
@@ -173,5 +306,81 @@ tbody tr:hover {
 .icon-cell {
   text-align: center;
   font-size: 1rem;
+}
+
+/* Enlarged photo modal */
+.photo-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.photo-modal-content {
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.photo-nav {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.photo-nav img {
+  max-width: 70vw;
+  max-height: 70vh;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.nav-btn {
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #333;
+}
+
+.nav-btn:hover:not(:disabled) {
+  background: white;
+}
+
+.nav-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.photo-info {
+  color: white;
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.close-btn {
+  margin-top: 1rem;
+  padding: 0.5rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  background: #e0e0e0;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.close-btn:hover {
+  background: #d0d0d0;
 }
 </style>

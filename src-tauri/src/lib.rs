@@ -9,6 +9,7 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let db_path = get_db_path(&app.handle());
             let database = Database::new(&db_path).expect("Failed to open database");
@@ -35,6 +36,8 @@ pub fn run() {
             commands::add_photo,
             commands::delete_photo,
             commands::import_plants_tsv,
+            commands::get_database_path,
+            commands::move_database,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

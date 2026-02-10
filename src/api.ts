@@ -33,3 +33,7 @@ export const deletePhoto = (id: number) => invoke<void>('delete_photo', { id });
 // Import
 export const importPlantsTsv = (tsvContent: string) =>
   invoke<number>('import_plants_tsv', { tsvContent });
+
+// Database
+export const getDatabasePath = () => invoke<string>('get_database_path');
+export const moveDatabase = (newPath: string) => invoke<string>('move_database', { newPath });

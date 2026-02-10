@@ -1,8 +1,9 @@
-use crate::db::Database;
+use crate::db::{save_config, AppConfig, Database};
 use crate::models::{Activity, Plant, PlantPhoto};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::Serialize;
-use tauri::State;
+use std::path::PathBuf;
+use tauri::{AppHandle, State};
 
 #[tauri::command]
 pub fn get_all_plants(db: State<Database>) -> Result<Vec<Plant>, String> {
@@ -343,4 +344,35 @@ pub fn import_plants_tsv(db: State<Database>, tsv_content: String) -> Result<u32
     }
 
     Ok(imported)
+}
+
+#[tauri::command]
+pub fn get_database_path(db: State<Database>) -> String {
+    db.get_path().to_string_lossy().to_string()
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn move_database(
+    app: AppHandle,
+    db: State<Database>,
+    new_path: String,
+) -> Result<String, String> {
+    let current_path = db.get_path();
+    let new_path = PathBuf::from(&new_path);
+
+    // Ensure parent directory exists
+    if let Some(parent) = new_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    // Copy the database file
+    std::fs::copy(&current_path, &new_path).map_err(|e| format!("Failed to copy database: {}", e))?;
+
+    // Save new path to config
+    let config = AppConfig {
+        database_path: Some(new_path.to_string_lossy().to_string()),
+    };
+    save_config(&app, &config).map_err(|e| format!("Failed to save config: {}", e))?;
+
+    Ok("Database moved. Please restart the app to use the new location.".to_string())
 }
