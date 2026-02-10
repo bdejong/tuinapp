@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, computed } from 'vue';
+import { ref, watch, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { MONTHS, type Plant } from '../types';
 import { getMonthData, type MonthData } from '../api';
