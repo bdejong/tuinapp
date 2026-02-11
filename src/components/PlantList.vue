@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import type { Plant, PlantPhoto } from '../types';
-import { PLANT_TYPES, SUN_REQUIREMENTS } from '../types';
+import { PLANT_TYPES, SUN_BITS } from '../types';
 import { getAllPlants, createPlant, updatePlant, deletePlant, getPhotos } from '../api';
 import PlantForm from './PlantForm.vue';
 
@@ -10,9 +10,22 @@ const getTypeIcon = (type: string | undefined): string => {
   return found?.icon || '-';
 };
 
-const getSunIcon = (sun: string | undefined): string => {
-  const found = SUN_REQUIREMENTS.find(s => s.value === sun);
-  return found?.icon || '-';
+const getSunIcons = (sunBits: number): string => {
+  if (!sunBits) return '-';
+  const icons: string[] = [];
+  if (sunBits & SUN_BITS.FULL_SUN) icons.push('☀️');
+  if (sunBits & SUN_BITS.PARTIAL_SHADE) icons.push('⛅');
+  if (sunBits & SUN_BITS.FULL_SHADE) icons.push('🌑');
+  return icons.length > 0 ? icons.join('') : '-';
+};
+
+const getSunLabels = (sunBits: number): string => {
+  if (!sunBits) return '';
+  const labels: string[] = [];
+  if (sunBits & SUN_BITS.FULL_SUN) labels.push('Full Sun');
+  if (sunBits & SUN_BITS.PARTIAL_SHADE) labels.push('Partial Shade');
+  if (sunBits & SUN_BITS.FULL_SHADE) labels.push('Full Shade');
+  return labels.join(', ');
 };
 
 const plants = ref<Plant[]>([]);
@@ -150,7 +163,7 @@ defineExpose({ openAddForm, openEditForm });
           </td>
           <td>{{ plant.name }}</td>
           <td class="icon-cell" :title="plant.plant_type?.replace('_', '/')">{{ getTypeIcon(plant.plant_type) }}</td>
-          <td class="icon-cell" :title="plant.sun_requirement?.replace('_', ' ')">{{ getSunIcon(plant.sun_requirement) }}</td>
+          <td class="icon-cell" :title="getSunLabels(plant.sun_requirements)">{{ getSunIcons(plant.sun_requirements) }}</td>
         </tr>
       </tbody>
     </table>

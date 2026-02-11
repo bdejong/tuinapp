@@ -55,10 +55,11 @@ pub fn save_config(app: &tauri::AppHandle, config: &AppConfig) -> std::io::Resul
     std::fs::write(config_path, content)
 }
 
-pub fn run_migrations(conn: &Connection) -> Result<()> {
-    conn.execute_batch(
-        "
-        CREATE TABLE IF NOT EXISTS plants (
+/// Migration definitions: (version, up_sql, down_sql)
+const MIGRATIONS: &[(i32, &str, &str)] = &[
+    // Version 1: Base schema
+    (1,
+        "CREATE TABLE IF NOT EXISTS plants (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             plant_type TEXT CHECK(plant_type IN ('vegetable_fruit', 'flower', 'herb')),
@@ -69,7 +70,6 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
-
         CREATE TABLE IF NOT EXISTS plant_photos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             plant_id INTEGER NOT NULL,
@@ -78,7 +78,6 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE
         );
-
         CREATE TABLE IF NOT EXISTS activities (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -86,9 +85,118 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
             active_periods INTEGER DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );",
+        "" // No down migration for base schema
+    ),
+    // Version 2: Convert sun_requirement TEXT to sun_requirements INTEGER bitmask
+    (2,
+        "CREATE TABLE plants_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            plant_type TEXT CHECK(plant_type IN ('vegetable_fruit', 'flower', 'herb')),
+            sun_requirements INTEGER DEFAULT 0,
+            sow_periods INTEGER DEFAULT 0,
+            plant_periods INTEGER DEFAULT 0,
+            notes TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
-        "
+        INSERT INTO plants_new SELECT
+            id, name, plant_type,
+            CASE sun_requirement
+                WHEN 'full_sun' THEN 1
+                WHEN 'partial_shade' THEN 2
+                WHEN 'full_shade' THEN 4
+                ELSE 0
+            END,
+            sow_periods, plant_periods, notes, created_at, updated_at
+        FROM plants;
+        DROP TABLE plants;
+        ALTER TABLE plants_new RENAME TO plants;",
+        // Down migration (loses combination data)
+        "CREATE TABLE plants_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            plant_type TEXT CHECK(plant_type IN ('vegetable_fruit', 'flower', 'herb')),
+            sun_requirement TEXT CHECK(sun_requirement IN ('full_sun', 'partial_shade', 'full_shade')),
+            sow_periods INTEGER DEFAULT 0,
+            plant_periods INTEGER DEFAULT 0,
+            notes TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO plants_new SELECT
+            id, name, plant_type,
+            CASE
+                WHEN (sun_requirements & 1) != 0 THEN 'full_sun'
+                WHEN (sun_requirements & 2) != 0 THEN 'partial_shade'
+                WHEN (sun_requirements & 4) != 0 THEN 'full_shade'
+                ELSE NULL
+            END,
+            sow_periods, plant_periods, notes, created_at, updated_at
+        FROM plants;
+        DROP TABLE plants;
+        ALTER TABLE plants_new RENAME TO plants;"
+    ),
+];
+
+fn get_schema_version(conn: &Connection) -> Result<i32> {
+    // Create schema_version table if needed
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL DEFAULT 0)",
+        [],
     )?;
+
+    // Ensure there's a row
+    conn.execute(
+        "INSERT INTO schema_version (version) SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM schema_version)",
+        [],
+    )?;
+
+    let version: i32 = conn.query_row(
+        "SELECT version FROM schema_version LIMIT 1",
+        [],
+        |row| row.get(0),
+    )?;
+
+    Ok(version)
+}
+
+fn set_schema_version(conn: &Connection, version: i32) -> Result<()> {
+    conn.execute("UPDATE schema_version SET version = ?1", [version])?;
+    Ok(())
+}
+
+fn table_exists(conn: &Connection, table_name: &str) -> Result<bool> {
+    let count: i32 = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+        [table_name],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+pub fn run_migrations(conn: &Connection) -> Result<()> {
+    let mut current_version = get_schema_version(conn)?;
+
+    // Detect existing database (plants table exists but version is 0)
+    if current_version == 0 && table_exists(conn, "plants")? {
+        // Existing database from before migration system - treat as v1
+        current_version = 1;
+        set_schema_version(conn, 1)?;
+        println!("Detected existing database, setting version to 1");
+    }
+
+    // Run pending up migrations sequentially
+    for (version, up_sql, _down_sql) in MIGRATIONS {
+        if *version > current_version {
+            println!("Running migration to version {}", version);
+            conn.execute_batch(up_sql)?;
+            set_schema_version(conn, *version)?;
+            println!("Migration to version {} complete", version);
+        }
+    }
+
     Ok(())
 }
 

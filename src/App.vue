@@ -99,6 +99,25 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 13px;
 }
+
+@media print {
+  body {
+    font-size: 11pt;
+  }
+
+  .sidebar {
+    display: none !important;
+  }
+
+  .content {
+    overflow: visible !important;
+    background: white !important;
+  }
+
+  .app {
+    display: block !important;
+  }
+}
 </style>
 
 <style scoped>

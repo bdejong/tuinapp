@@ -5,7 +5,7 @@ pub struct Plant {
     pub id: Option<i64>,
     pub name: String,
     pub plant_type: Option<String>,
-    pub sun_requirement: Option<String>,
+    pub sun_requirements: i32,
     pub sow_periods: i32,
     pub plant_periods: i32,
     pub notes: Option<String>,

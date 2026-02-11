@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import type { Plant } from '../types';
-import { SUN_REQUIREMENTS, PLANT_TYPES } from '../types';
+import { SUN_REQUIREMENTS, PLANT_TYPES, SUN_BITS } from '../types';
 import PeriodCheckboxGrid from './PeriodCheckboxGrid.vue';
 import PhotoCapture from './PhotoCapture.vue';
 
@@ -20,7 +20,7 @@ const emit = defineEmits<{
 const form = ref<Plant>({
   name: '',
   plant_type: undefined,
-  sun_requirement: undefined,
+  sun_requirements: 0,
   sow_periods: 0,
   plant_periods: 0,
   notes: '',
@@ -33,13 +33,30 @@ watch(() => props.visible, (visible) => {
     form.value = {
       name: '',
       plant_type: undefined,
-      sun_requirement: undefined,
+      sun_requirements: 0,
       sow_periods: 0,
       plant_periods: 0,
       notes: '',
     };
   }
 }, { immediate: true });
+
+// Map SUN_REQUIREMENTS values to bit values
+const sunBitMap: Record<string, number> = {
+  'full_sun': SUN_BITS.FULL_SUN,
+  'partial_shade': SUN_BITS.PARTIAL_SHADE,
+  'full_shade': SUN_BITS.FULL_SHADE,
+};
+
+const hasSunBit = (value: string) => {
+  const bit = sunBitMap[value] || 0;
+  return (form.value.sun_requirements & bit) !== 0;
+};
+
+const toggleSunBit = (value: string) => {
+  const bit = sunBitMap[value] || 0;
+  form.value.sun_requirements ^= bit;
+};
 
 const isEditing = () => props.plant?.id !== undefined;
 
@@ -98,15 +115,15 @@ const cancelDelete = () => {
       </div>
 
       <div class="form-group">
-        <label>Sun Requirement</label>
+        <label>Sun Requirements</label>
         <div class="button-group">
           <button
             v-for="opt in SUN_REQUIREMENTS"
             :key="opt.value"
             type="button"
-            :class="{ selected: form.sun_requirement === opt.value }"
+            :class="{ selected: hasSunBit(opt.value) }"
             :title="opt.label"
-            @click="form.sun_requirement = form.sun_requirement === opt.value ? undefined : opt.value"
+            @click="toggleSunBit(opt.value)"
           >
             <span class="icon">{{ opt.icon }}</span>
             <span class="label">{{ opt.label }}</span>
