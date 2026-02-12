@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
-import { MONTHS, type Plant } from '../types';
+import { MONTHS, type Plant, SUN_BITS } from '../types';
 import { getMonthData, type MonthData } from '../api';
 
 const currentMonth = ref(new Date().getMonth() + 1);
@@ -13,6 +13,27 @@ const CATEGORIES = [
   { key: 'herb', label: 'Herbs', icon: '🌿' },
   { key: null, label: 'Other', icon: '🌱' },
 ];
+
+const getSunIcons = (sunBits: number): string => {
+  if (!sunBits) return '';
+  const icons: string[] = [];
+  if (sunBits & SUN_BITS.FULL_SUN) icons.push('☀️');
+  if (sunBits & SUN_BITS.PARTIAL_SHADE) icons.push('⛅');
+  if (sunBits & SUN_BITS.FULL_SHADE) icons.push('🌑');
+  return icons.join('');
+};
+
+const formatPlantForPdf = (plant: Plant): string => {
+  let entry = plant.name;
+  const sunIcons = getSunIcons(plant.sun_requirements);
+  if (sunIcons) {
+    entry += ` ${sunIcons}`;
+  }
+  if (plant.notes) {
+    entry += ` - ${plant.notes}`;
+  }
+  return entry;
+};
 
 const groupByCategory = (plants: Plant[]) => {
   const groups: Record<string, Plant[]> = {};
@@ -42,10 +63,10 @@ const handlePrint = async () => {
   const toCategorized = (plants: Plant[]) => {
     const grouped = groupByCategory(plants);
     return {
-      vegetables: grouped['vegetable_fruit'].map(p => p.name),
-      flowers: grouped['flower'].map(p => p.name),
-      herbs: grouped['herb'].map(p => p.name),
-      other: grouped['other'].map(p => p.name),
+      vegetables: grouped['vegetable_fruit'].map(formatPlantForPdf),
+      flowers: grouped['flower'].map(formatPlantForPdf),
+      herbs: grouped['herb'].map(formatPlantForPdf),
+      other: grouped['other'].map(formatPlantForPdf),
     };
   };
 
