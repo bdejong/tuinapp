@@ -13,5 +13,9 @@
     <!-- Persist access to user-selected files across app restarts -->
     <key>com.apple.security.files.bookmarks.app-scope</key>
     <true/>
+
+    <!-- Required for WebView to function in sandbox -->
+    <key>com.apple.security.network.client</key>
+    <true/>
 </dict>
 </plist>

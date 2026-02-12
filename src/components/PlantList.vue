@@ -275,7 +275,7 @@ th {
 
 .icon-header {
   text-align: center;
-  width: 50px;
+  width: 75px;
 }
 
 .photo-header {
