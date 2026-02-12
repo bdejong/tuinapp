@@ -14,23 +14,23 @@ const CATEGORIES = [
   { key: null, label: 'Other', icon: '🌱' },
 ];
 
-const getSunIcons = (sunBits: number): string => {
+const getSunSymbols = (sunBits: number): string => {
   if (!sunBits) return '';
-  const icons: string[] = [];
-  if (sunBits & SUN_BITS.FULL_SUN) icons.push('☀️');
-  if (sunBits & SUN_BITS.PARTIAL_SHADE) icons.push('⛅');
-  if (sunBits & SUN_BITS.FULL_SHADE) icons.push('🌑');
-  return icons.join('');
+  const symbols: string[] = [];
+  if (sunBits & SUN_BITS.FULL_SUN) symbols.push('***');
+  if (sunBits & SUN_BITS.PARTIAL_SHADE) symbols.push('**');
+  if (sunBits & SUN_BITS.FULL_SHADE) symbols.push('*');
+  return `(${symbols.join(',')})`;
 };
 
 const formatPlantForPdf = (plant: Plant): string => {
   let entry = plant.name;
-  const sunIcons = getSunIcons(plant.sun_requirements);
-  if (sunIcons) {
-    entry += ` ${sunIcons}`;
+  const sunSymbols = getSunSymbols(plant.sun_requirements);
+  if (sunSymbols) {
+    entry += ` ${sunSymbols}`;
   }
   if (plant.notes) {
-    entry += ` - ${plant.notes}`;
+    entry += ' (N)';
   }
   return entry;
 };

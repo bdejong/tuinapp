@@ -38,7 +38,7 @@ pub fn run() {
             commands::delete_photo,
             commands::import_plants_tsv,
             commands::get_database_path,
-            commands::move_database,
+            commands::save_database_path,
             commands::generate_pdf,
         ])
         .run(tauri::generate_context!())

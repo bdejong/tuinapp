@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { copyFile } from '@tauri-apps/plugin-fs';
 import type { Plant, Activity, PlantPhoto } from './types';
 
 // Plants
@@ -36,4 +37,14 @@ export const importPlantsTsv = (tsvContent: string) =>
 
 // Database
 export const getDatabasePath = () => invoke<string>('get_database_path');
-export const moveDatabase = (newPath: string) => invoke<string>('move_database', { newPath });
+
+export const moveDatabase = async (newPath: string): Promise<string> => {
+  // Get current database path
+  const currentPath = await getDatabasePath();
+
+  // Copy using Tauri's fs plugin (respects sandbox permissions from dialog)
+  await copyFile(currentPath, newPath);
+
+  // Save the new path to config
+  return invoke<string>('save_database_path', { newPath });
+};

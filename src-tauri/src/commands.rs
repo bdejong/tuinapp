@@ -5,7 +5,6 @@ use printpdf::*;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::BufWriter;
-use std::path::PathBuf;
 use std::process::Command;
 use tauri::{AppHandle, State};
 
@@ -356,25 +355,13 @@ pub fn get_database_path(db: State<Database>) -> String {
 }
 
 #[tauri::command(rename_all = "camelCase")]
-pub fn move_database(
+pub fn save_database_path(
     app: AppHandle,
-    db: State<Database>,
     new_path: String,
 ) -> Result<String, String> {
-    let current_path = db.get_path();
-    let new_path = PathBuf::from(&new_path);
-
-    // Ensure parent directory exists
-    if let Some(parent) = new_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-
-    // Copy the database file
-    std::fs::copy(&current_path, &new_path).map_err(|e| format!("Failed to copy database: {}", e))?;
-
     // Save new path to config
     let config = AppConfig {
-        database_path: Some(new_path.to_string_lossy().to_string()),
+        database_path: Some(new_path),
     };
     save_config(&app, &config).map_err(|e| format!("Failed to save config: {}", e))?;
 
@@ -446,18 +433,26 @@ pub fn generate_pdf(data: PrintData) -> Result<String, String> {
         () => { if y < bottom_margin { new_page!(); } };
     }
 
-    // Helper to draw items in a column
+    // Helper to truncate string safely at character boundaries
+    let truncate_str = |s: &str, max_chars: usize| -> String {
+        if s.chars().count() > max_chars {
+            format!("{}...", s.chars().take(max_chars - 3).collect::<String>())
+        } else {
+            s.to_string()
+        }
+    };
+
+    // Helper to draw items in a column (no truncation - show full plant name)
     let draw_items = |layer: &PdfLayerReference, items: &[String], x: Mm, mut y: Mm| -> Mm {
         for item in items {
-            let display = if item.len() > 28 { format!("{}...", &item[..25]) } else { item.clone() };
-            layer.use_text(&format!("• {}", display), 5.5, x, y, &font);
+            layer.use_text(&format!("• {}", item), 5.5, x, y, &font);
             y = y - line_height;
         }
         y
     };
 
     // Helper to draw a time period (Early/Late) with 3 category columns
-    let draw_period = |layer: &PdfLayerReference, veg: &[String], flow: &[String], herb: &[String], x1: Mm, x2: Mm, x3: Mm, mut y: Mm| -> Mm {
+    let draw_period = |layer: &PdfLayerReference, veg: &[String], flow: &[String], herb: &[String], x1: Mm, x2: Mm, x3: Mm, y: Mm| -> Mm {
         let start_y = y;
         let y1 = if veg.is_empty() { y } else { draw_items(layer, veg, x1, y) };
         let y2 = if flow.is_empty() { start_y } else { draw_items(layer, flow, x2, start_y) };
@@ -534,7 +529,7 @@ pub fn generate_pdf(data: PrintData) -> Result<String, String> {
     } else {
         for activity in &data.activities {
             check_page!();
-            let display = if activity.len() > 100 { format!("{}...", &activity[..97]) } else { activity.clone() };
+            let display = truncate_str(activity, 100);
             layer!().use_text(&format!("• {}", display), 5.5, col1_x, y, &font);
             y = y - line_height;
         }
