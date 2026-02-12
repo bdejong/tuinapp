@@ -4,9 +4,10 @@ import PlantList from './components/PlantList.vue';
 import PlantGrid from './components/PlantGrid.vue';
 import ActivityList from './components/ActivityList.vue';
 import MonthlyView from './components/MonthlyView.vue';
+import ToOrderView from './components/ToOrderView.vue';
 import SettingsView from './components/SettingsView.vue';
 
-type View = 'plants' | 'activities' | 'calendar' | 'settings';
+type View = 'plants' | 'activities' | 'calendar' | 'toorder' | 'settings';
 type PlantSubView = 'list' | 'grid';
 
 const currentView = ref<View>('plants');
@@ -62,6 +63,9 @@ onUnmounted(() => {
         <li :class="{ active: currentView === 'calendar' }" @click="currentView = 'calendar'">
           Calendar
         </li>
+        <li :class="{ active: currentView === 'toorder' }" @click="currentView = 'toorder'">
+          To Order
+        </li>
         <li :class="{ active: currentView === 'settings' }" @click="currentView = 'settings'">
           Settings
         </li>
@@ -83,6 +87,7 @@ onUnmounted(() => {
       </div>
       <ActivityList v-else-if="currentView === 'activities'" ref="activityListRef" />
       <MonthlyView v-else-if="currentView === 'calendar'" />
+      <ToOrderView v-else-if="currentView === 'toorder'" />
       <SettingsView v-else-if="currentView === 'settings'" />
     </main>
   </div>

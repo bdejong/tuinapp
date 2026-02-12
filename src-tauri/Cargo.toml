@@ -27,4 +27,5 @@ base64 = "0.22"
 tauri-plugin-dialog = "2.6.0"
 tauri-plugin-fs = "2.4.5"
 printpdf = "0.7"
+chrono = "0.4"
 

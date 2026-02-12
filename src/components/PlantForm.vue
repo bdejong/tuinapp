@@ -24,6 +24,7 @@ const form = ref<Plant>({
   sow_periods: 0,
   plant_periods: 0,
   notes: '',
+  needs_reorder: false,
 });
 
 watch(() => props.visible, (visible) => {
@@ -37,6 +38,7 @@ watch(() => props.visible, (visible) => {
       sow_periods: 0,
       plant_periods: 0,
       notes: '',
+      needs_reorder: false,
     };
   }
 }, { immediate: true });
@@ -137,6 +139,13 @@ const cancelDelete = () => {
       <div class="form-group">
         <label>Notes</label>
         <textarea v-model="form.notes" rows="3" placeholder="Optional notes"></textarea>
+      </div>
+
+      <div class="form-group checkbox-row">
+        <label class="checkbox-label">
+          <input type="checkbox" v-model="form.needs_reorder" />
+          Needs to be reordered
+        </label>
       </div>
 
       <div v-if="isEditing()" class="form-group">
@@ -251,6 +260,24 @@ button {
   color: #f44336;
   font-weight: 500;
   margin-right: 0.5rem;
+}
+
+.checkbox-row {
+  margin-top: 0.5rem;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-weight: normal;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
 }
 
 .button-group {

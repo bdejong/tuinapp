@@ -9,6 +9,7 @@ pub struct Plant {
     pub sow_periods: i32,
     pub plant_periods: i32,
     pub notes: Option<String>,
+    pub needs_reorder: bool,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }

@@ -1,3 +1,4 @@
+use chrono::Local;
 use rusqlite::{Connection, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -138,6 +139,27 @@ const MIGRATIONS: &[(i32, &str, &str)] = &[
         DROP TABLE plants;
         ALTER TABLE plants_new RENAME TO plants;"
     ),
+    // Version 3: Add needs_reorder column for tracking seeds to buy
+    (3,
+        "ALTER TABLE plants ADD COLUMN needs_reorder INTEGER DEFAULT 0;",
+        // Down migration: remove the column by recreating the table
+        "CREATE TABLE plants_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            plant_type TEXT CHECK(plant_type IN ('vegetable_fruit', 'flower', 'herb')),
+            sun_requirements INTEGER DEFAULT 0,
+            sow_periods INTEGER DEFAULT 0,
+            plant_periods INTEGER DEFAULT 0,
+            notes TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO plants_new SELECT
+            id, name, plant_type, sun_requirements, sow_periods, plant_periods, notes, created_at, updated_at
+        FROM plants;
+        DROP TABLE plants;
+        ALTER TABLE plants_new RENAME TO plants;"
+    ),
 ];
 
 fn get_schema_version(conn: &Connection) -> Result<i32> {
@@ -198,6 +220,37 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub fn backup_database(app: &tauri::AppHandle, db_path: &PathBuf) {
+    use tauri::Manager;
+
+    // Only backup if the database file exists
+    if !db_path.exists() {
+        return;
+    }
+
+    // Create backups directory in app data folder
+    let app_dir = app
+        .path()
+        .app_data_dir()
+        .expect("Failed to get app data dir");
+    let backup_dir = app_dir.join("backups");
+    if let Err(e) = std::fs::create_dir_all(&backup_dir) {
+        eprintln!("Failed to create backup directory: {}", e);
+        return;
+    }
+
+    // Generate backup filename with timestamp
+    let timestamp = Local::now().format("%Y-%m-%d_%H-%M-%S");
+    let backup_filename = format!("tuinapp_{}.db", timestamp);
+    let backup_path = backup_dir.join(&backup_filename);
+
+    // Copy database to backup location
+    match std::fs::copy(db_path, &backup_path) {
+        Ok(_) => println!("Database backed up to: {}", backup_path.display()),
+        Err(e) => eprintln!("Failed to backup database: {}", e),
+    }
 }
 
 pub fn get_default_db_path(app: &tauri::AppHandle) -> PathBuf {

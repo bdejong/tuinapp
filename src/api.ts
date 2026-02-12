@@ -7,6 +7,7 @@ export const getAllPlants = () => invoke<Plant[]>('get_all_plants');
 export const createPlant = (plant: Plant) => invoke<Plant>('create_plant', { plant });
 export const updatePlant = (plant: Plant) => invoke<void>('update_plant', { plant });
 export const deletePlant = (id: number) => invoke<void>('delete_plant', { id });
+export const getPlantsToReorder = () => invoke<Plant[]>('get_plants_to_reorder');
 
 // Activities
 export const getAllActivities = () => invoke<Activity[]>('get_all_activities');

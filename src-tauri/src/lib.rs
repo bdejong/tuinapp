@@ -2,7 +2,7 @@ mod commands;
 mod db;
 mod models;
 
-use db::{get_db_path, run_migrations, Database};
+use db::{backup_database, get_db_path, run_migrations, Database};
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -13,6 +13,10 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             let db_path = get_db_path(&app.handle());
+
+            // Backup database before opening
+            backup_database(&app.handle(), &db_path);
+
             let database = Database::new(&db_path).expect("Failed to open database");
 
             {
@@ -28,6 +32,7 @@ pub fn run() {
             commands::create_plant,
             commands::update_plant,
             commands::delete_plant,
+            commands::get_plants_to_reorder,
             commands::get_all_activities,
             commands::create_activity,
             commands::update_activity,

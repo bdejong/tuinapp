@@ -6,6 +6,7 @@ export interface Plant {
   sow_periods: number;
   plant_periods: number;
   notes?: string;
+  needs_reorder: boolean;
   created_at?: string;
   updated_at?: string;
 }
