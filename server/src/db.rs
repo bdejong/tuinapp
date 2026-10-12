@@ -1,5 +1,5 @@
 use crate::models::{Activity, Plant};
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use rusqlite::{Connection, OpenFlags, TransactionBehavior, params};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -405,70 +405,4 @@ pub fn import_legacy(source: &Path, destination: &Path) -> Result<ImportSummary>
         photos: photos.len(),
         source_sha256: before,
     })
-}
-
-pub fn parse_tsv(content: &str) -> Result<Vec<(String, i32, i32)>> {
-    ensure!(content.len() <= 2_000_000, "TSV is too large");
-    let mut lines = content.trim_start_matches('\u{feff}').lines();
-    let header = lines.next().context("TSV is empty")?;
-    ensure!(
-        header.split('\t').count() == 25,
-        "Expected a name column and 24 early/late columns"
-    );
-    let mut rows = Vec::new();
-    for (i, line) in lines.enumerate() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let cols: Vec<_> = line.split('\t').collect();
-        ensure!(
-            cols.len() == 25 && crate::models::valid_name(cols[0]),
-            "Invalid row {}",
-            i + 2
-        );
-        let (mut sow, mut plant) = (0, 0);
-        for (j, cell) in cols.iter().skip(1).enumerate() {
-            let value = cell.trim();
-            ensure!(
-                value
-                    .chars()
-                    .all(|c| matches!(c, 'Z' | 'P' | ' ' | ',' | '/' | '+')),
-                "Invalid period value on row {}",
-                i + 2
-            );
-            if value.contains('Z') {
-                sow |= 1 << j;
-            }
-            if value.contains('P') {
-                plant |= 1 << j;
-            }
-        }
-        rows.push((cols[0].trim().to_owned(), sow, plant));
-    }
-    ensure!(!rows.is_empty(), "TSV has no plant rows");
-    Ok(rows)
-}
-
-pub fn import_tsv(c: &mut Connection, content: &str) -> Result<usize> {
-    let rows = parse_tsv(content)?;
-    let fingerprint = digest(serde_json::to_vec(&rows)?.as_slice());
-    let tx = c.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    if tx
-        .prepare("SELECT 1 FROM imports WHERE fingerprint=?1")?
-        .exists([&fingerprint])?
-    {
-        bail!("This file has already been imported");
-    }
-    for (name, sow, plant) in &rows {
-        tx.execute(
-            "INSERT INTO plants(name,sow_periods,plant_periods) VALUES(?1,?2,?3)",
-            params![name, sow, plant],
-        )?;
-    }
-    tx.execute(
-        "INSERT INTO imports(fingerprint,kind,row_count) VALUES(?1,'tsv',?2)",
-        params![fingerprint, rows.len() as i64],
-    )?;
-    tx.commit()?;
-    Ok(rows.len())
 }

@@ -281,30 +281,6 @@ fn backup_failure_is_visible_and_does_not_prune_existing_backups() {
     assert!(moved.join(saved.file_name().unwrap()).exists());
 }
 
-#[test]
-fn tsv_validation_transaction_and_retry_detection() {
-    let mut c = Connection::open_in_memory().unwrap();
-    db::initialize(&mut c).unwrap();
-    let header = vec!["column"; 25].join("\t");
-    let row = |name: &str| format!("{}\t{}", name, vec!["ZP"; 24].join("\t"));
-    let content = format!("{header}\n{}\n{}", row("A"), row("A"));
-    assert_eq!(db::import_tsv(&mut c, &content).unwrap(), 2);
-    assert_eq!(db::plants(&c).unwrap()[0].sow_periods, 0xffffff);
-    assert!(db::import_tsv(&mut c, &content).is_err());
-    assert_eq!(db::plants(&c).unwrap().len(), 2);
-    assert!(db::import_tsv(&mut c, &format!("{header}\n{}\nbroken", row("valid"))).is_err());
-    assert_eq!(db::plants(&c).unwrap().len(), 2);
-    c.execute_batch("CREATE TRIGGER reject_second BEFORE INSERT ON plants WHEN new.name='Fail' BEGIN SELECT RAISE(ABORT,'test'); END;").unwrap();
-    assert!(
-        db::import_tsv(
-            &mut c,
-            &format!("{header}\n{}\n{}", row("First"), row("Fail"))
-        )
-        .is_err()
-    );
-    assert_eq!(db::plants(&c).unwrap().len(), 2);
-}
-
 fn compare_golden(source: &Connection, target: &Connection) {
     let columns = [
         (

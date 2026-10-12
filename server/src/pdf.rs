@@ -1,4 +1,4 @@
-//! Desktop PDF layout, ported from src-tauri/src/commands.rs.
+//! Desktop PDF layout, ported from the original Tauri renderer at Git commit ea57931.
 //! Intentionally use the same renderer and dimensions; this is not HTML printing.
 use crate::models::{MonthData, Plant};
 use printpdf::*;

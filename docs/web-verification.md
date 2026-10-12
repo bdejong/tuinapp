@@ -7,8 +7,8 @@ Verified locally on 12 October 2026. The application is implemented and the gold
 | Check | Result |
 | --- | --- |
 | Frontend production build and TypeScript checks | Passed |
-| Frontend component/API-adapter tests | 117 passed |
-| Real-browser workflow tests with golden data | 66 passed: 33 scenarios each in Chromium and Firefox |
+| Frontend component/API-adapter tests | 116 passed |
+| Real-browser workflow tests with golden data | 64 passed: 32 scenarios each in Chromium and Firefox |
 | Public database/API/PDF tests | 26 passed |
 | Private golden import/reopen/backup/restore test | 1 passed, deliberately excluded from public CI |
 | Rust formatting and Clippy with warnings treated as errors | Passed |
@@ -20,9 +20,9 @@ The complete browser suite passed with the compact PDF download. The new PDF tes
 
 ## Frontend coverage
 
-Component tests cover all 24 period controls and boundary bits, field validation, editing without mutating source records, reset on reopening, Save & Add Another, duplicate-submit guards, unsaved-change cancellation, modal focus/Tab/Escape behavior, delete confirmation, trimmed/case-insensitive search, consistent sun symbols, empty/loading/error/retry states, failed-save preservation, completed saves followed by refresh errors, reorder updates, calendar categories and failed/stale requests, import previews, backup state/recovery/errors, login errors and API/session handling.
+Component tests cover all 24 period controls and boundary bits, field validation, editing without mutating source records, reset on reopening, Save & Add Another, duplicate-submit guards, unsaved-change cancellation, modal focus/Tab/Escape behavior, delete confirmation, trimmed/case-insensitive search, consistent sun symbols, empty/loading/error/retry states, failed-save preservation, completed saves followed by refresh errors, reorder updates, calendar categories and failed/stale requests, backup state/recovery/errors, login errors and API/session handling.
 
-Real browser tests cover the private 177-plant/9-activity/17-reorder dataset; desktop creation, overview editing and deletion; keyboard validation and Enter-to-save; complete field/period round trips; order completion; search; failed reads and saves; session expiry without losing drafts; activity entry/reset/calendar display; absence of photo controls; TSV preview/cancel/import/retry rejection; invalid TSV; backup failure/retry, download and recovery; sign-out and reauthentication; 1280×800 and 1920×1080 layouts; and scrolling the annual overview without losing its headings or legend. One existing stale-edit regression remains; the focus is ordinary single-owner use.
+Real browser tests cover the private 177-plant/9-activity/17-reorder dataset; desktop creation, overview editing and deletion; keyboard validation and Enter-to-save; complete field/period round trips; order completion; search; failed reads and saves; session expiry without losing drafts; activity entry/reset/calendar display; absence of photo controls; absence of spreadsheet import and rejected legacy import endpoints; backup failure/retry, download and recovery; sign-out and reauthentication; 1280×800 and 1920×1080 layouts; and scrolling the annual overview without losing its headings or legend. One existing stale-edit regression remains; the focus is ordinary single-owner use.
 
 Automated accessibility checks cover the five main views and the plant dialog against WCAG A/AA rule groups supported by axe. They are not a complete accessibility certification. Desktop screenshots were visually inspected for the list, overview, calendar, backups and plant form; review images remain local under `.local/visual-review/` and are ignored by Git.
 
@@ -73,10 +73,18 @@ TUINAPP_PDF_OUTPUT=output/pdf \
 npm run test:e2e -- tests/browser/pdf.spec.ts
 ```
 
+## Container verification and workspace cleanup
+
+The Linux ARM64 image `tuinapp:local` was built successfully from the multi-stage Dockerfile in a dedicated local Colima environment. The same disposable runtime smoke test passed twice: once with an empty garden and once with a read-only copy of the golden legacy source. It checked non-root execution, a read-only root filesystem, HTTP health, private API access, login, compiled assets, plant creation, PDFs, backup creation/download, recovery verification and record persistence after restart. The golden run verified 177 baseline plants and 17 reorder flags, imported 9 activities, preserved every baseline plant through restart, and confirmed the source checksum stayed unchanged. Temporary containers and volumes were removed afterwards.
+
+The container build context is an allowlist of application sources and manifests. Credentials, garden databases, snapshots, tests and private comparison files are excluded. Compose configuration was validated, with named data/backup volumes and a configurable loopback host port. GitHub Actions has a dedicated native AMD64/ARM64 build-and-smoke-test workflow using the same script; workflow run results are authoritative for each pushed commit. Images are built/tested, with no registry publishing configured.
+
+The old desktop backend, installers/icons, starter logos, outdated desktop plans/screenshots and duplicate project notes were removed from the active workspace. Git history retains the original application. Machine-local assistant settings are now ignored and kept locally; the old spreadsheet is preserved in ignored `.local/legacy-reference/`. Spreadsheet preview/import routes, parsing/writing code, UI, client methods and obsolete tests were removed. Endpoint regressions confirm that attempts to use the removed routes cannot change garden data or backups. Historical migration checksums and import provenance remain intact; legacy database conversion and recovery tools remain available.
+
 ## Limits and hosting follow-up
 
-- WebKit could not create a browser page on this macOS 14 workstation: the frozen browser build reports `Unknown setting: PushAPIEnabled`. Chromium and Firefox passed; Linux CI is configured to also test WebKit, but CI has not been executed in this session.
-- Docker packaging and a CI image-build job are provided. Docker Desktop was not running here, so no successful container build is claimed.
+- WebKit could not create a browser page on this macOS 14 workstation: the frozen browser build reports `Unknown setting: PushAPIEnabled`. Chromium and Firefox passed; Linux CI is configured to also test WebKit, and Linux CI passed the complete suite on commit `d89626f`.
+- Container builds and runtime checks are tracked in the dedicated Build and test container workflow; see the container verification below.
 - Real OS printing was not exercised. Actual PDF downloads were exercised in real browsers, and PDF layouts were rendered and compared separately.
 - Independent encrypted backups, remote failure alerts, HTTPS and an off-site recovery drill require the selected hosting environment. Current snapshots and golden copies are on this computer.
 - Tests cover normal workflows and deliberate failure cases; they cannot guarantee absence of all future defects. Add a regression when a real issue is found.

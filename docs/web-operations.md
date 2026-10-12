@@ -14,6 +14,7 @@ The process uses an exclusive server lock. Deploy one replica with one persisten
 | `TUINAPP_BACKUP_DIR` | `backups` | Persistent snapshot directory |
 | `TUINAPP_PASSWORD_HASH` | required | Owner's generated Argon2 hash |
 | `TUINAPP_PUBLIC_ORIGIN` | `http://127.0.0.1:3000` | Exact browser origin, no trailing slash; HTTPS enables Secure cookies |
+| `TUINAPP_PORT` | `3000` | Compose host port only; update public origin to match |
 | `TUINAPP_BIND` | `127.0.0.1:3000` | Listener; container uses `0.0.0.0:3000` internally |
 | `TUINAPP_STATIC_DIR` | `dist` | Compiled website only; never a directory containing data or credentials |
 | `TUINAPP_BACKUP_INTERVAL_SECONDS` | `3600` | Automatic snapshot interval, minimum 60 seconds |
@@ -36,7 +37,7 @@ The default configuration has one-hour recovery points while the server runs. Th
 5. Sign in, check plant/activity counts, create a manual backup, download it, and run Test recovery.
 6. Configure independent encrypted off-site backups and failure notifications before relying on the hosted copy. Retain the original golden archive separately.
 
-The container build definition is included in CI. Docker Desktop was not running during local implementation, so the container image has not been validated on this workstation.
+The container workflow builds and smoke-tests Linux AMD64 and ARM64 images. `npm run test:container` runs the same checks against `tuinapp:test` (or pass an image name after `--`). It creates uniquely named temporary volumes and removes them afterwards. The development preview, working garden and golden archive are never mounted by this test.
 
 ## Database upgrades
 

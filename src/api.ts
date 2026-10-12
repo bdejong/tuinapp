@@ -35,8 +35,6 @@ export const deleteActivity = (id: number, revision?: number) => request<void>(`
 export interface MonthData { sow_early: Plant[]; sow_late: Plant[]; plant_early: Plant[]; plant_late: Plant[]; activities: Activity[]; }
 export const getMonthData = (month: number) => request<MonthData>(`/months/${month}`);
 export const getMonthPdf = (month: number) => request<Blob>(`/months/${month}/pdf`, 'GET', undefined, false, true, false);
-export const previewImport = (content: string) => request<{count: number; names: string[]}>('/imports/preview', 'POST', { content });
-export const importPlantsTsv = (content: string) => request<{count: number}>('/imports/tsv', 'POST', { content });
 export interface BackupStatus { latest: { created_at: string; reason: string; plants: number; activities: number; sha256: string } | null; last_error: string | null; last_restore_verified_at: string | null; storage: string; }
 export const getBackupStatus = () => request<BackupStatus>('/backups/status');
 export const createBackup = () => request<BackupStatus>('/backups', 'POST');

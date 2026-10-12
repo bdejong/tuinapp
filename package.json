@@ -13,7 +13,8 @@
     "test:e2e": "playwright test",
     "check": "npm run build && npm test && npm run test:ui",
     "test:ui": "vitest run",
-    "pretest:e2e": "npm run build && node scripts/cargo.mjs build --bin tuinapp-server"
+    "pretest:e2e": "npm run build && node scripts/cargo.mjs build --bin tuinapp-server",
+    "test:container": "node scripts/container-smoke.mjs"
   },
   "dependencies": {
     "vue": "^3.5.43"

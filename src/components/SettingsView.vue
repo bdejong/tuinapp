@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { useSessionRestore } from '../composables/useSessionRestore';
 import { ref, onMounted, onUnmounted } from 'vue';
-import { previewImport, importPlantsTsv, getBackupStatus, createBackup, verifyBackup, downloadBackup, type BackupStatus } from '../api';
-const status = ref<BackupStatus | null>(null); const busy = ref(false); const message = ref(''); const content = ref('');
-const preview = ref<{count: number; names: string[]} | null>(null);
+import { getBackupStatus, createBackup, verifyBackup, downloadBackup, type BackupStatus } from '../api';
+const status = ref<BackupStatus | null>(null); const busy = ref(false); const message = ref('');
 const formatDate = (date?: string | null) => date ? new Date(date).toLocaleString() : 'Not yet';
 const statusError = ref('');
 const statusLoading = ref(true);
@@ -20,12 +19,6 @@ async function backup(verify = false) {
   try { status.value = await (verify ? verifyBackup() : createBackup()); message.value = verify ? 'A backup was restored into a temporary database and verified successfully.' : 'Backup created and verified.'; }
   catch {} finally { busy.value = false; }
 }
-async function fileSelected(event: Event) {
-  const input = event.target as HTMLInputElement; const file = input.files?.[0]; if (!file) return;
-  busy.value = true; message.value = ''; preview.value = null;
-  try { content.value = await file.text(); preview.value = await previewImport(content.value); }
-  catch {} finally { busy.value = false; input.value = ''; }
-}
 async function download() {
   busy.value = true; message.value = '';
   try {
@@ -37,11 +30,6 @@ async function download() {
     message.value = 'Your verified backup download is ready.';
     await refresh();
   } catch {} finally { busy.value = false; }
-}
-async function importFile() {
-  busy.value = true; message.value = '';
-  try { const result = await importPlantsTsv(content.value); message.value = `Imported ${result.count} plants. A recovery backup was created first.`; content.value = ''; preview.value = null; await refresh(); }
-  catch {} finally { busy.value = false; }
 }
 useSessionRestore(() => { void refresh(); });
 </script>
@@ -58,12 +46,8 @@ useSessionRestore(() => { void refresh(); });
       <div class="actions"><button :disabled="busy" @click="backup()">Back up now</button><button :disabled="busy" @click="backup(true)">Test recovery</button><button :disabled="busy" @click="download">Download backup</button></div>
       <p class="hint">Recovery uses a separate database and never replaces your garden automatically.</p>
     </section>
-    <section><h2>Import a plant spreadsheet</h2><p>Select a TSV with a name column and 24 early/late period columns. Use Z for sowing and P for planting.</p>
-      <label class="file-button">Choose TSV <input type="file" accept=".tsv,.txt" @change="fileSelected" :disabled="busy" /></label>
-      <div v-if="preview" class="preview"><h3>{{ preview.count }} plants ready to import</h3><p>{{ preview.names.join(' · ') }}</p><p>These will be added as new records. Matching plant names are allowed. The same file cannot be imported twice.</p><button :disabled="busy" @click="importFile">Import {{ preview.count }} plants</button><button class="secondary" :disabled="busy" @click="preview = null; content = ''">Cancel</button></div>
-    </section>
   </div>
 </template>
 <style scoped>
-.settings-view {padding:24px;max-width:1000px;}h1 {font-size:24px;margin-bottom:8px;}.intro {color:#697263;margin-bottom:24px;}section {background:white;padding:24px;border:1px solid #dce2d5;border-radius:8px;margin-bottom:20px;}h2 {font-size:18px;margin-bottom:14px;}p {line-height:1.6;margin-bottom:14px;color:#616d5b;}dl {display:grid;grid-template-columns:220px 1fr;gap:12px;margin:20px 0;}dt {color:#58694e;}dd {font-weight:600;}.actions {display:flex;gap:10px;align-items:center;}button,.button {display:inline-block;font-size:13px;padding:10px 14px;border:0;border-radius:5px;background:#386145;color:white;cursor:pointer;text-decoration:none;}button:disabled {opacity:.5;cursor:wait;}.hint {font-size:12px;margin-top:12px;}.storage-note {background:#fff5df;padding:12px;border-radius:4px;color:#786127;}.error {color:#a33229;}.success {background:#e8f2e2;padding:14px;border-radius:6px;}.file-button {display:block;}.file-button input {margin-left:12px;}.preview {padding:18px;background:#f3f6ef;margin-top:20px;}.preview h3 {margin-bottom:12px;}.secondary {margin-left:8px;background:#dce2d5;color:#354e31;}
+.settings-view {padding:24px;max-width:1000px;}h1 {font-size:24px;margin-bottom:8px;}.intro {color:#697263;margin-bottom:24px;}section {background:white;padding:24px;border:1px solid #dce2d5;border-radius:8px;margin-bottom:20px;}h2 {font-size:18px;margin-bottom:14px;}p {line-height:1.6;margin-bottom:14px;color:#616d5b;}dl {display:grid;grid-template-columns:220px 1fr;gap:12px;margin:20px 0;}dt {color:#58694e;}dd {font-weight:600;}.actions {display:flex;gap:10px;align-items:center;}button,.button {display:inline-block;font-size:13px;padding:10px 14px;border:0;border-radius:5px;background:#386145;color:white;cursor:pointer;text-decoration:none;}button:disabled {opacity:.5;cursor:wait;}.hint {font-size:12px;margin-top:12px;}.storage-note {background:#fff5df;padding:12px;border-radius:4px;color:#786127;}.error {color:#a33229;}.success {background:#e8f2e2;padding:14px;border-radius:6px;}
 </style>

@@ -191,8 +191,6 @@ pub fn router(state: Arc<AppState>, static_dir: PathBuf) -> Router {
         )
         .route("/months/{month}", get(month))
         .route("/months/{month}/pdf", get(month_pdf))
-        .route("/imports/preview", post(preview_tsv))
-        .route("/imports/tsv", post(import_tsv))
         .route("/backups/status", get(backup_status))
         .route("/backups", post(make_backup))
         .route("/backups/verify", post(verify_backup))
@@ -486,28 +484,6 @@ async fn month_pdf(State(s): State<Arc<AppState>>, Path(number): Path<i32>) -> R
         .into_response())
 }
 
-#[derive(Deserialize)]
-struct Tsv {
-    content: String,
-}
-async fn preview_tsv(Json(input): Json<Tsv>) -> Result<Json<Value>> {
-    let rows = db::parse_tsv(&input.content).map_err(|e| bad(e.to_string()))?;
-    Ok(Json(
-        json!({"count":rows.len(),"names":rows.iter().take(8).map(|r|&r.0).collect::<Vec<_>>()}),
-    ))
-}
-async fn import_tsv(State(s): State<Arc<AppState>>, Json(input): Json<Tsv>) -> Result<Json<Value>> {
-    db::parse_tsv(&input.content).map_err(|e| bad(e.to_string()))?;
-    Ok(Json(
-        work(s, move |s| {
-            s.backups.snapshot(&s.conn, "before-import")?;
-            let count =
-                db::import_tsv(&mut s.conn, &input.content).map_err(|e| bad(e.to_string()))?;
-            Ok(json!({"count":count}))
-        })
-        .await?,
-    ))
-}
 async fn backup_status(State(s): State<Arc<AppState>>) -> Result<Json<Status>> {
     Ok(Json(work(s, |s| Ok(s.backups.status.clone())).await?))
 }

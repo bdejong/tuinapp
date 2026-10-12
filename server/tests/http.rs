@@ -410,66 +410,44 @@ async fn removed_photo_endpoints_cannot_read_add_or_delete_legacy_data() {
 }
 
 #[tokio::test]
-async fn import_is_backed_up_and_recovery_checks_real_records() {
-    let (tmp, state, app) = setup();
+async fn removed_spreadsheet_endpoints_do_not_change_garden_or_backups() {
+    let (_tmp, state, app) = setup();
     let auth = login(&app).await;
-    let content = format!(
-        "{}\nTest\t{}",
-        vec!["header"; 25].join("\t"),
-        vec!["Z"; 24].join("\t")
-    );
+    send(&app, "POST", "/api/plants", plant(), Some(&auth), None).await;
+    let before = db::plants(&state.store.lock().unwrap().conn).unwrap();
+    for path in ["/api/imports/preview", "/api/imports/tsv"] {
+        assert_eq!(
+            send(
+                &app,
+                "POST",
+                path,
+                json!({"content":"name\tJanuary\nBasil\tZ"}),
+                Some(&auth),
+                None
+            )
+            .await
+            .0,
+            StatusCode::NOT_FOUND
+        );
+    }
+    let store = state.store.lock().unwrap();
+    assert_eq!(db::plants(&store.conn).unwrap(), before);
+    assert!(store.backups.status.latest.is_none());
     assert_eq!(
-        send(
-            &app,
-            "POST",
-            "/api/imports/preview",
-            json!({"content":content}),
-            Some(&auth),
-            None
-        )
-        .await
-        .2["count"],
-        1
-    );
-    assert_eq!(
-        send(
-            &app,
-            "POST",
-            "/api/imports/tsv",
-            json!({"content":content}),
-            Some(&auth),
-            None
-        )
-        .await
-        .0,
-        StatusCode::OK
-    );
-    assert_eq!(
-        state
-            .store
-            .lock()
-            .unwrap()
-            .backups
-            .status
-            .latest
-            .as_ref()
-            .unwrap()
-            .plants,
+        store
+            .conn
+            .query_row("SELECT count(*) FROM imports", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
         0
     );
-    assert_eq!(
-        send(
-            &app,
-            "POST",
-            "/api/imports/tsv",
-            json!({"content":content}),
-            Some(&auth),
-            None
-        )
-        .await
-        .0,
-        StatusCode::BAD_REQUEST
-    );
+}
+
+#[tokio::test]
+async fn recovery_checks_real_records_and_backup_failures_leave_them_intact() {
+    let (tmp, state, app) = setup();
+    let auth = login(&app).await;
+    send(&app, "POST", "/api/plants", plant(), Some(&auth), None).await;
+    let before = db::plants(&state.store.lock().unwrap().conn).unwrap();
     let (status, _, verified) = send(
         &app,
         "POST",
@@ -484,23 +462,15 @@ async fn import_is_backed_up_and_recovery_checks_real_records() {
     assert_eq!(verified["latest"]["plants"], 1);
     std::fs::rename(tmp.path().join("backups"), tmp.path().join("safe-backups")).unwrap();
     std::fs::write(tmp.path().join("backups"), "file").unwrap();
-    let content = content.replace("Test", "Do not import");
     assert_eq!(
-        send(
-            &app,
-            "POST",
-            "/api/imports/tsv",
-            json!({"content":content}),
-            Some(&auth),
-            None
-        )
-        .await
-        .0,
+        send(&app, "POST", "/api/backups", Value::Null, Some(&auth), None)
+            .await
+            .0,
         StatusCode::INTERNAL_SERVER_ERROR
     );
     assert_eq!(
-        db::plants(&state.store.lock().unwrap().conn).unwrap().len(),
-        1
+        db::plants(&state.store.lock().unwrap().conn).unwrap(),
+        before
     );
 }
 

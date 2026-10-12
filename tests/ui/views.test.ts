@@ -154,13 +154,10 @@ describe('Settings and login', () => {
   it('does not claim success when backup creation fails', async () => {
     vi.mocked(api.createBackup).mockRejectedValue(new Error('No space'));const w=mount(SettingsView);await flushPromises();await button(w,'Back up now').trigger('click');await flushPromises();expect(w.find('[role=status]').exists()).toBe(false);expect(button(w,'Back up now').attributes('disabled')).toBeUndefined();
   });
-  it('previews a TSV before committing any rows', async () => {
-    vi.mocked(api.previewImport).mockResolvedValue({count:2,names:['A','B']});vi.mocked(api.importPlantsTsv).mockResolvedValue({count:2});const w=mount(SettingsView);await flushPromises();
-    const input=w.get('input[type=file]');Object.defineProperty(input.element,'files',{value:[{text:async()=>'test tsv'}],configurable:true});await input.trigger('change');await flushPromises();expect(api.importPlantsTsv).not.toHaveBeenCalled();expect(w.text()).toContain('2 plants ready');
-    await button(w,'Import 2 plants').trigger('click');await flushPromises();expect(api.importPlantsTsv).toHaveBeenCalledWith('test tsv');expect(w.text()).toContain('Imported 2 plants');expect(w.find('.preview').exists()).toBe(false);
-  });
-  it('clears a cancelled import preview without sending it', async () => {
-    vi.mocked(api.previewImport).mockResolvedValue({count:1,names:['A']});const w=mount(SettingsView);await flushPromises();const input=w.get('input[type=file]');Object.defineProperty(input.element,'files',{value:[{text:async()=>'content'}]});await input.trigger('change');await flushPromises();await button(w,'Cancel').trigger('click');expect(w.find('.preview').exists()).toBe(false);expect(api.importPlantsTsv).not.toHaveBeenCalled();
+  it('has backup controls but no spreadsheet import or upload controls', async () => {
+    const w=mount(SettingsView);await flushPromises();
+    expect(w.text()).not.toMatch(/spreadsheet|import|TSV/i);expect(w.find('input[type=file]').exists()).toBe(false);
+    expect(button(w,'Back up now')).toBeDefined();expect(button(w,'Test recovery')).toBeDefined();expect(button(w,'Download backup')).toBeDefined();
   });
   it('login failure is visible and does not lose the entered password', async () => {
     vi.mocked(api.login).mockRejectedValue(new Error('Incorrect password'));const w=mount(LoginView);await w.get('input').setValue('wrong');await w.get('form').trigger('submit');await flushPromises();expect(w.get('[role=alert]').text()).toBe('Incorrect password');expect(w.get('input').element).toHaveProperty('value','wrong');expect(w.emitted('signedIn')).toBeUndefined();

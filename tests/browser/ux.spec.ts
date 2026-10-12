@@ -11,7 +11,6 @@ async function add(page: Page, name: string) {
   await page.getByRole('button', { name: '+ Add Plant', exact: true }).first().click();
   await page.getByRole('dialog').getByLabel('Name', { exact: true }).fill(prefix + name);
 }
-const tsv = (name: string) => [Array.from({length:25}, (_,i)=>i ? `Period ${i}` : 'Name').join('\t'), [prefix + name,...Array.from({length:24}, (_,i)=>i===0?'Z/P':'')].join('\t')].join('\n');
 
 test.beforeEach(async ({ page }) => { await page.goto('/'); await signIn(page); });
 test.afterEach(async ({ page }) => {
@@ -160,19 +159,13 @@ test('sun symbols match the colored screen assets and plant forms have no photo 
   await expect(page.locator('.settings-view')).not.toContainText(/photo|camera/i);
 });
 
-test('TSV previews before import, cancels safely and rejects repeat imports', async ({ page }, testInfo) => {
+test('Settings offers backups without spreadsheet import', async ({ page }) => {
   await page.getByRole('navigation').getByRole('button',{name:'Settings',exact:true}).click();
-  const content=tsv(`import ${testInfo.project.name}`);
-  const input=page.getByLabel('Choose TSV');
-  await input.setInputFiles({name:'plants.tsv',mimeType:'text/tab-separated-values',buffer:Buffer.from(content)});
-  await expect(page.getByRole('heading',{name:'1 plants ready to import'})).toBeVisible();
-  await page.getByRole('button',{name:'Cancel',exact:true}).click(); await expect(page.locator('.preview')).toHaveCount(0);
-  await input.setInputFiles({name:'plants.tsv',mimeType:'text/tab-separated-values',buffer:Buffer.from(content)});
-  await page.getByRole('button',{name:'Import 1 plants',exact:true}).click();
-  await expect(page.getByRole('status')).toContainText('Imported 1 plants');
-  await input.setInputFiles({name:'plants.tsv',mimeType:'text/tab-separated-values',buffer:Buffer.from(content)});
-  await page.getByRole('button',{name:'Import 1 plants',exact:true}).click();
-  await expect(page.getByRole('alert')).toContainText('already');
+  await expect(page.getByRole('heading',{name:'Settings & backups'})).toBeVisible();
+  await expect(page.locator('.settings-view')).not.toContainText(/spreadsheet|import|TSV/i);
+  await expect(page.locator('input[type=file]')).toHaveCount(0);
+  await page.getByRole('button',{name:'Back up now',exact:true}).click();
+  await expect(page.getByRole('status')).toContainText('Backup created and verified.');
 });
 
 test('backup status failure is explicit and retry recovers', async ({ page }) => {
@@ -220,14 +213,6 @@ test('failed backup download keeps Settings open and allows retry', async ({page
   const pending=page.waitForEvent('download'); await page.getByRole('button',{name:'Download backup'}).click();
   expect((await pending).suggestedFilename()).toBe('tuinapp-backup.zip');
   await expect(page.getByRole('alert')).toHaveCount(0);
-});
-
-test('invalid spreadsheet is rejected before showing an import action', async ({page})=>{
-  await page.getByRole('navigation').getByRole('button',{name:'Settings',exact:true}).click();
-  await page.getByLabel('Choose TSV').setInputFiles({name:'bad.tsv',mimeType:'text/tab-separated-values',buffer:Buffer.from('name\tJanuary\nBasil\tZ')});
-  await expect(page.getByRole('alert')).toBeVisible();
-  await expect(page.locator('.preview')).toHaveCount(0);
-  await expect(page.getByRole('heading',{name:'Settings & backups'})).toBeVisible();
 });
 
 test('sign out hides private data and signing back in reopens the garden', async ({page})=>{
