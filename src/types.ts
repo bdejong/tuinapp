@@ -7,8 +7,9 @@ export interface Plant {
   plant_periods: number;
   notes?: string;
   needs_reorder: boolean;
-  created_at?: string;
-  updated_at?: string;
+  revision?: number;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 // Sun requirement bitmask values
@@ -18,21 +19,14 @@ export const SUN_BITS = {
   FULL_SHADE: 4,
 } as const;
 
-export interface PlantPhoto {
-  id?: number;
-  plant_id: number;
-  sort_order: number;
-  image_data?: string;
-  created_at?: string;
-}
-
 export interface Activity {
   id?: number;
   name: string;
   description?: string;
   active_periods: number;
-  created_at?: string;
-  updated_at?: string;
+  revision?: number;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export const MONTHS = [
@@ -47,7 +41,7 @@ export const PLANT_TYPES = [
 ] as const;
 
 export const SUN_REQUIREMENTS = [
-  { value: 'full_sun', label: 'Full Sun', icon: '☀️' },
-  { value: 'partial_shade', label: 'Partial Shade', icon: '⛅' },
-  { value: 'full_shade', label: 'Full Shade', icon: '🌑' },
+  { value: 'full_sun', label: 'Full Sun', bit: SUN_BITS.FULL_SUN, icon: '/icons/full-sun.svg' },
+  { value: 'partial_shade', label: 'Half Sun', bit: SUN_BITS.PARTIAL_SHADE, icon: '/icons/half-sun.svg' },
+  { value: 'full_shade', label: 'Shade', bit: SUN_BITS.FULL_SHADE, icon: '/icons/shade.svg' },
 ] as const;

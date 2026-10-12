@@ -1,65 +1,39 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import type { Plant, PlantPhoto } from '../types';
-import { PLANT_TYPES, SUN_BITS } from '../types';
-import { getAllPlants, createPlant, updatePlant, deletePlant, getPhotos } from '../api';
+import { useLoadState } from '../composables/useLoadState';
+import type { Plant } from '../types';
+import { PLANT_TYPES, SUN_REQUIREMENTS } from '../types';
+import { getAllPlants, createPlant, updatePlant, deletePlant } from '../api';
 import PlantForm from './PlantForm.vue';
+import SunIcon from './SunIcon.vue';
 
 const getTypeIcon = (type: string | undefined): string => {
   const found = PLANT_TYPES.find(t => t.value === type);
   return found?.icon || '-';
 };
 
-const getSunIcons = (sunBits: number): string => {
-  if (!sunBits) return '-';
-  const icons: string[] = [];
-  if (sunBits & SUN_BITS.FULL_SUN) icons.push('☀️');
-  if (sunBits & SUN_BITS.PARTIAL_SHADE) icons.push('⛅');
-  if (sunBits & SUN_BITS.FULL_SHADE) icons.push('🌑');
-  return icons.length > 0 ? icons.join('') : '-';
-};
-
-const getSunLabels = (sunBits: number): string => {
-  if (!sunBits) return '';
-  const labels: string[] = [];
-  if (sunBits & SUN_BITS.FULL_SUN) labels.push('Full Sun');
-  if (sunBits & SUN_BITS.PARTIAL_SHADE) labels.push('Partial Shade');
-  if (sunBits & SUN_BITS.FULL_SHADE) labels.push('Full Shade');
-  return labels.join(', ');
-};
-
 const plants = ref<Plant[]>([]);
-const plantPhotos = ref<Map<number, PlantPhoto[]>>(new Map());
 const showForm = ref(false);
+const formKey = ref(0);
+const saving = ref(false);
 const editingPlant = ref<Plant | undefined>();
 const searchQuery = ref('');
-const enlargedPhotos = ref<PlantPhoto[]>([]);
-const currentPhotoIndex = ref(0);
 
 const filteredPlants = computed(() => {
   if (!searchQuery.value.trim()) return plants.value;
-  const query = searchQuery.value.toLowerCase();
+  const query = searchQuery.value.trim().toLowerCase();
   return plants.value.filter(plant =>
     plant.name.toLowerCase().includes(query)
   );
 });
 
-const loadPlants = async () => {
-  plants.value = await getAllPlants();
-  // Load all photos for each plant
-  for (const plant of plants.value) {
-    if (plant.id) {
-      const photos = await getPhotos(plant.id);
-      if (photos.length > 0) {
-        plantPhotos.value.set(plant.id, photos);
-      }
-    }
-  }
-};
+const { loading, loadError, load } = useLoadState();
+const loadPlants = () => load(async () => { plants.value = await getAllPlants(); });
 
-onMounted(loadPlants);
+onMounted(() => loadPlants().catch(() => {}));
 
 const openAddForm = () => {
+  if (showForm.value) return;
   editingPlant.value = undefined;
   showForm.value = true;
 };
@@ -70,56 +44,25 @@ const openEditForm = (plant: Plant) => {
 };
 
 const handleSave = async (plant: Plant) => {
-  if (plant.id) {
-    await updatePlant(plant);
-  } else {
-    await createPlant(plant);
-  }
-  await loadPlants();
-  showForm.value = false;
+  if (saving.value) return;
+  saving.value = true;
+  try {
+    if (plant.id) await updatePlant(plant); else await createPlant(plant);
+    showForm.value = false; await loadPlants();
+  } catch {} finally { saving.value = false; }
 };
-
 const handleSaveAndAdd = async (plant: Plant) => {
-  await createPlant(plant);
-  await loadPlants();
-  editingPlant.value = undefined;
+  if (saving.value) return;
+  saving.value = true;
+  try { await createPlant(plant); editingPlant.value = undefined; formKey.value++; await loadPlants(); }
+  catch {} finally { saving.value = false; }
 };
 
 const handleDelete = async (id: number) => {
-  await deletePlant(id);
-  await loadPlants();
-  showForm.value = false;
-};
-
-const getPlantPhotos = (plantId: number | undefined): PlantPhoto[] => {
-  if (!plantId) return [];
-  return plantPhotos.value.get(plantId) || [];
-};
-
-const openEnlargedPhotos = (event: Event, plantId: number) => {
-  event.stopPropagation();
-  const photos = getPlantPhotos(plantId);
-  if (photos.length > 0) {
-    enlargedPhotos.value = photos;
-    currentPhotoIndex.value = 0;
-  }
-};
-
-const closeEnlargedPhotos = () => {
-  enlargedPhotos.value = [];
-  currentPhotoIndex.value = 0;
-};
-
-const nextPhoto = () => {
-  if (currentPhotoIndex.value < enlargedPhotos.value.length - 1) {
-    currentPhotoIndex.value++;
-  }
-};
-
-const prevPhoto = () => {
-  if (currentPhotoIndex.value > 0) {
-    currentPhotoIndex.value--;
-  }
+  if (saving.value) return;
+  saving.value = true;
+  try { await deletePlant(id, editingPlant.value?.revision); await loadPlants(); showForm.value = false; }
+  catch {} finally { saving.value = false; }
 };
 
 defineExpose({ openAddForm, openEditForm });
@@ -128,7 +71,7 @@ defineExpose({ openAddForm, openEditForm });
 <template>
   <div class="plant-list">
     <div class="header">
-      <h1>Plants</h1>
+      <h1>Plants <span class="record-count">{{ plants.length }}</span></h1>
       <button class="add-btn" @click="openAddForm">+ Add Plant</button>
     </div>
 
@@ -137,14 +80,16 @@ defineExpose({ openAddForm, openEditForm });
         v-model="searchQuery"
         type="text"
         placeholder="Search plants..."
+        aria-label="Search plants"
         class="search-input"
       />
     </div>
 
-    <table v-if="filteredPlants.length > 0">
+    <p v-if="loading" role="status" class="empty">Loading plants…</p>
+    <div v-else-if="loadError" class="load-error" role="alert"><p>{{ loadError }}</p><button @click="loadPlants">Try again</button></div>
+    <table v-else-if="filteredPlants.length > 0">
       <thead>
         <tr>
-          <th class="photo-header">Photo</th>
           <th>Name</th>
           <th class="icon-header">Type</th>
           <th class="icon-header">Sun</th>
@@ -152,18 +97,9 @@ defineExpose({ openAddForm, openEditForm });
       </thead>
       <tbody>
         <tr v-for="plant in filteredPlants" :key="plant.id" @click="openEditForm(plant)">
-          <td class="photo-cell">
-            <span
-              v-if="getPlantPhotos(plant.id).length > 0"
-              class="photo-icon"
-              @click="(e) => openEnlargedPhotos(e, plant.id!)"
-              :title="getPlantPhotos(plant.id).length + ' photo(s)'"
-            >📷</span>
-            <span v-else class="no-photo">-</span>
-          </td>
-          <td>{{ plant.name }}</td>
+          <td><button class="row-name" @click.stop="openEditForm(plant)">{{ plant.name }}</button></td>
           <td class="icon-cell" :title="plant.plant_type?.replace('_', '/')">{{ getTypeIcon(plant.plant_type) }}</td>
-          <td class="icon-cell" :title="getSunLabels(plant.sun_requirements)">{{ getSunIcons(plant.sun_requirements) }}</td>
+          <td class="icon-cell"><span class="sun-icons" v-if="plant.sun_requirements"><SunIcon v-for="opt in SUN_REQUIREMENTS.filter(opt => plant.sun_requirements & opt.bit)" :key="opt.value" :value="opt.value" /></span><span v-else aria-label="Sun requirement not specified">-</span></td>
         </tr>
       </tbody>
     </table>
@@ -171,41 +107,15 @@ defineExpose({ openAddForm, openEditForm });
     <p v-else-if="plants.length > 0" class="empty">No plants match your search.</p>
     <p v-else class="empty">No plants yet. Add your first plant!</p>
 
-    <!-- Enlarged photo modal -->
-    <div v-if="enlargedPhotos.length > 0" class="photo-modal" @click="closeEnlargedPhotos">
-      <div class="photo-modal-content" @click.stop>
-        <div class="photo-nav">
-          <button
-            v-if="enlargedPhotos.length > 1"
-            class="nav-btn prev"
-            :disabled="currentPhotoIndex === 0"
-            @click="prevPhoto"
-          >&lt;</button>
-          <img
-            :src="'data:image/jpeg;base64,' + enlargedPhotos[currentPhotoIndex].image_data"
-            alt="Enlarged photo"
-          />
-          <button
-            v-if="enlargedPhotos.length > 1"
-            class="nav-btn next"
-            :disabled="currentPhotoIndex === enlargedPhotos.length - 1"
-            @click="nextPhoto"
-          >&gt;</button>
-        </div>
-        <div class="photo-info">
-          <span v-if="enlargedPhotos.length > 1">{{ currentPhotoIndex + 1 }} / {{ enlargedPhotos.length }}</span>
-        </div>
-        <button class="close-btn" @click="closeEnlargedPhotos">Close</button>
-      </div>
-    </div>
-
     <PlantForm
+      :key="formKey"
+      :busy="saving"
       :visible="showForm"
       :plant="editingPlant"
       @save="handleSave"
       @save-and-add="handleSaveAndAdd"
       @delete="handleDelete"
-      @close="showForm = false"
+      @close="showForm = false; loadPlants()"
     />
   </div>
 </template>
@@ -228,7 +138,7 @@ defineExpose({ openAddForm, openEditForm });
 }
 
 .add-btn {
-  background: #4caf50;
+  background: #386145;
   color: white;
   border: none;
   padding: 0.35rem 0.75rem;
@@ -252,7 +162,7 @@ defineExpose({ openAddForm, openEditForm });
 
 .search-input:focus {
   outline: none;
-  border-color: #4caf50;
+  border-color: #386145;
 }
 
 table {
@@ -278,29 +188,6 @@ th {
   width: 75px;
 }
 
-.photo-header {
-  text-align: center;
-  width: 50px;
-}
-
-.photo-cell {
-  text-align: center;
-}
-
-.photo-icon {
-  cursor: pointer;
-  font-size: 1rem;
-}
-
-.photo-icon:hover {
-  transform: scale(1.2);
-  display: inline-block;
-}
-
-.no-photo {
-  color: #ccc;
-}
-
 tbody tr {
   cursor: pointer;
 }
@@ -321,79 +208,7 @@ tbody tr:hover {
   font-size: 1rem;
 }
 
-/* Enlarged photo modal */
-.photo-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.85);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-}
-
-.photo-modal-content {
-  max-width: 90vw;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.photo-nav {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.photo-nav img {
-  max-width: 70vw;
-  max-height: 70vh;
-  object-fit: contain;
-  border-radius: 8px;
-}
-
-.nav-btn {
-  width: 48px;
-  height: 48px;
-  border: none;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.9);
-  cursor: pointer;
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: #333;
-}
-
-.nav-btn:hover:not(:disabled) {
-  background: white;
-}
-
-.nav-btn:disabled {
-  opacity: 0.3;
-  cursor: default;
-}
-
-.photo-info {
-  color: white;
-  margin-top: 0.5rem;
-  font-size: 0.9rem;
-}
-
-.close-btn {
-  margin-top: 1rem;
-  padding: 0.5rem 1.5rem;
-  border: none;
-  border-radius: 4px;
-  background: #e0e0e0;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
-
-.close-btn:hover {
-  background: #d0d0d0;
-}
+.sun-icons {display:inline-flex;align-items:center;gap:3px;}
 </style>
+
+<style scoped>.row-name {border:0;background:transparent;text-align:left;padding:0;color:inherit;cursor:pointer;}.load-error {margin:24px 0;padding:16px;border:1px solid #e6c3b8;background:#fff6f1;}.load-error button {margin-top:10px;padding:7px 12px;}.record-count {font-weight:400;color:#617052;font-size:13px;margin-left:8px;}</style>

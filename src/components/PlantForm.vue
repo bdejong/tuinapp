@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
+import { useDialog } from '../composables/useDialog';
 import type { Plant } from '../types';
 import { SUN_REQUIREMENTS, PLANT_TYPES, SUN_BITS } from '../types';
 import PeriodCheckboxGrid from './PeriodCheckboxGrid.vue';
-import PhotoCapture from './PhotoCapture.vue';
+import SunIcon from './SunIcon.vue';
 
 const props = defineProps<{
   plant?: Plant;
   visible: boolean;
+  busy?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -27,7 +29,10 @@ const form = ref<Plant>({
   needs_reorder: false,
 });
 
+const initial = ref('');
+const validationError = ref('');
 watch(() => props.visible, (visible) => {
+  validationError.value = '';
   if (visible && props.plant) {
     form.value = { ...props.plant };
   } else if (visible) {
@@ -41,6 +46,7 @@ watch(() => props.visible, (visible) => {
       needs_reorder: false,
     };
   }
+  if (visible) initial.value = JSON.stringify(form.value);
 }, { immediate: true });
 
 // Map SUN_REQUIREMENTS values to bit values
@@ -62,15 +68,22 @@ const toggleSunBit = (value: string) => {
 
 const isEditing = () => props.plant?.id !== undefined;
 
-const handleSave = () => {
-  emit('save', { ...form.value });
+const requestClose = () => {
+  if (props.busy) return;
+  if (JSON.stringify(form.value) !== initial.value && !window.confirm('Discard your unsaved changes?')) return;
+  emit('close');
 };
-
-const handleSaveAndAdd = () => {
-  emit('save-and-add', { ...form.value });
+const dialog = useDialog(() => props.visible, requestClose);
+const valid = () => {
+  if (props.busy) return false;
+  if (!form.value.name.trim()) { validationError.value = 'Please enter a name.'; return false; }
+  validationError.value = ''; return true;
 };
+const handleSave = () => { if (valid()) emit('save', { ...form.value }); };
+const handleSaveAndAdd = () => { if (valid()) emit('save-and-add', { ...form.value }); };
 
 const confirmingDelete = ref(false);
+watch(() => props.visible, () => { confirmingDelete.value = false; });
 
 const handleDelete = () => {
   if (!props.plant?.id) return;
@@ -90,22 +103,22 @@ const cancelDelete = () => {
 </script>
 
 <template>
-  <div v-if="visible" class="modal-overlay" @click.self="emit('close')">
-    <div class="modal">
+  <div v-if="visible" class="modal-overlay" @click.self="requestClose">
+    <form ref="dialog" class="modal" @submit.prevent="handleSave" role="dialog" aria-modal="true" aria-label="Plant details">
       <h2>{{ isEditing() ? 'Edit Plant' : 'Add Plant' }}</h2>
 
       <div class="form-group">
-        <label>Name</label>
-        <input v-model="form.name" type="text" placeholder="Plant name" />
+        <label for="PlantForm-name">Name</label>
+        <input :aria-invalid="!!validationError" :aria-describedby="validationError ? 'PlantForm-error' : undefined" id="PlantForm-name" v-model="form.name" maxlength="500" type="text" placeholder="Plant name" />
       </div>
 
       <div class="form-group">
         <label>Type</label>
         <div class="button-group">
-          <button
+          <button type="button"
             v-for="opt in PLANT_TYPES"
             :key="opt.value"
-            type="button"
+            :aria-pressed="form.plant_type === opt.value"
             :class="{ selected: form.plant_type === opt.value }"
             :title="opt.label"
             @click="form.plant_type = form.plant_type === opt.value ? undefined : opt.value"
@@ -119,15 +132,15 @@ const cancelDelete = () => {
       <div class="form-group">
         <label>Sun Requirements</label>
         <div class="button-group">
-          <button
+          <button type="button"
             v-for="opt in SUN_REQUIREMENTS"
             :key="opt.value"
-            type="button"
+            :aria-pressed="hasSunBit(opt.value)"
             :class="{ selected: hasSunBit(opt.value) }"
             :title="opt.label"
             @click="toggleSunBit(opt.value)"
           >
-            <span class="icon">{{ opt.icon }}</span>
+            <SunIcon :value="opt.value" decorative class="sun-choice-icon" />
             <span class="label">{{ opt.label }}</span>
           </button>
         </div>
@@ -137,8 +150,8 @@ const cancelDelete = () => {
       <PeriodCheckboxGrid v-model="form.plant_periods" label="Planting Periods" />
 
       <div class="form-group">
-        <label>Notes</label>
-        <textarea v-model="form.notes" rows="3" placeholder="Optional notes"></textarea>
+        <label for="PlantForm-notes">Notes</label>
+        <textarea id="PlantForm-notes" v-model="form.notes" rows="3" placeholder="Optional notes"></textarea>
       </div>
 
       <div class="form-group checkbox-row">
@@ -148,26 +161,22 @@ const cancelDelete = () => {
         </label>
       </div>
 
-      <div v-if="isEditing()" class="form-group">
-        <label>Photos</label>
-        <PhotoCapture :plant-id="plant?.id" />
-      </div>
-
+      <p v-if="validationError" id="PlantForm-error" class="validation-error" role="alert">{{ validationError }}</p>
       <div class="button-row">
         <template v-if="isEditing()">
           <template v-if="confirmingDelete">
             <span class="confirm-text">Delete this plant?</span>
-            <button type="button" class="delete-btn" @click="confirmDelete">Yes, Delete</button>
+            <button type="button" class="delete-btn" :disabled="busy" @click="confirmDelete">Yes, Delete</button>
             <button type="button" class="secondary-btn" @click="cancelDelete">No</button>
           </template>
-          <button v-else type="button" class="delete-btn" @click="handleDelete">Delete</button>
+          <button type="button" v-else  class="delete-btn" @click="handleDelete">Delete</button>
         </template>
         <div class="spacer"></div>
-        <button type="button" class="secondary-btn" @click="emit('close')">Cancel</button>
-        <button v-if="!isEditing()" type="button" class="secondary-btn" @click="handleSaveAndAdd">Save & Add Another</button>
-        <button type="button" class="primary-btn" @click="handleSave">{{ isEditing() ? 'Save' : 'Save & Close' }}</button>
+        <button type="button" class="secondary-btn" :disabled="busy" @click="requestClose">Cancel</button>
+        <button type="button" v-if="!isEditing()"  class="secondary-btn" :disabled="busy" @click="handleSaveAndAdd">Save & Add Another</button>
+        <button type="submit" class="primary-btn" :disabled="busy">{{ isEditing() ? 'Save' : 'Save & Close' }}</button>
       </div>
-    </div>
+    </form>
   </div>
 </template>
 
@@ -243,7 +252,7 @@ button {
 }
 
 .primary-btn {
-  background: #4caf50;
+  background: #386145;
   color: white;
 }
 
@@ -252,12 +261,12 @@ button {
 }
 
 .delete-btn {
-  background: #f44336;
+  background: #b83227;
   color: white;
 }
 
 .confirm-text {
-  color: #f44336;
+  color: #b83227;
   font-weight: 500;
   margin-right: 0.5rem;
 }
@@ -297,13 +306,13 @@ button {
 }
 
 .button-group button:hover {
-  border-color: #4caf50;
+  border-color: #386145;
 }
 
 .button-group button.selected {
-  background: #4caf50;
+  background: #386145;
   color: white;
-  border-color: #4caf50;
+  border-color: #386145;
 }
 
 .button-group button .icon {
@@ -311,7 +320,11 @@ button {
   margin-right: 0.2rem;
 }
 
+.sun-choice-icon {margin-right:5px;background:white;border-radius:3px;padding:1px;}
+
 .button-group button .label {
   font-size: 0.75rem;
 }
 </style>
+
+<style scoped>.validation-error {color:#a33229;margin:12px 0;font-size:13px;}.modal {box-shadow:0 18px 60px #0003;}input[aria-invalid="true"] {border-color:#a33229;}</style>

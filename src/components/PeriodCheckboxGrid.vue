@@ -31,29 +31,31 @@ const togglePeriod = (index: number) => {
     <div class="grid">
       <div class="header-row">
         <div class="corner"></div>
-        <div v-for="month in MONTHS" :key="month" class="month-header">
-          {{ month }}
+        <div v-for="month in MONTHS" :key="month" class="month-header" :title="month">
+          {{ month.slice(0, 3) }}
         </div>
       </div>
       <div class="period-row">
         <div class="row-label">Early</div>
-        <div
+        <button
+          type="button"
           v-for="(_, monthIndex) in MONTHS"
           :key="`early-${monthIndex}`"
           class="cell"
           :class="{ active: periods[monthIndex * 2] }"
-          @click="togglePeriod(monthIndex * 2)"
-        ></div>
+           :aria-label="`${label}: early ${MONTHS[monthIndex]}`" :aria-pressed="periods[monthIndex * 2]" @click="togglePeriod(monthIndex * 2)"
+        ></button>
       </div>
       <div class="period-row">
         <div class="row-label">Late</div>
-        <div
+        <button
+          type="button"
           v-for="(_, monthIndex) in MONTHS"
           :key="`late-${monthIndex}`"
           class="cell"
           :class="{ active: periods[monthIndex * 2 + 1] }"
-          @click="togglePeriod(monthIndex * 2 + 1)"
-        ></div>
+           :aria-label="`${label}: late ${MONTHS[monthIndex]}`" :aria-pressed="periods[monthIndex * 2 + 1]" @click="togglePeriod(monthIndex * 2 + 1)"
+        ></button>
       </div>
     </div>
   </div>
@@ -71,34 +73,35 @@ const togglePeriod = (index: number) => {
 }
 
 .grid {
-  display: inline-block;
+  display: block;
   border: 1px solid #ccc;
 }
 
 .header-row, .period-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 42px repeat(12, minmax(0, 1fr));
 }
 
 .corner, .row-label {
-  width: 36px;
+  width: 42px;
   padding: 2px 4px;
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   background: #f5f5f5;
   border-right: 1px solid #ccc;
 }
 
 .month-header {
-  width: 30px;
+  width: 100%;
   text-align: center;
   padding: 2px;
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   background: #f5f5f5;
   border-right: 1px solid #eee;
 }
 
 .cell {
-  width: 30px;
-  height: 18px;
+  width: 100%;
+  height: 26px;
   border: 1px solid #eee;
   cursor: pointer;
   background: white;
@@ -109,7 +112,7 @@ const togglePeriod = (index: number) => {
 }
 
 .cell.active {
-  background: #4caf50;
+  background: #386145;
 }
 
 .period-row {

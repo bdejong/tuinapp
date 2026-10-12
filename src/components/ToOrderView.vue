@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { useLoadState } from '../composables/useLoadState';
 import type { Plant } from '../types';
 import { PLANT_TYPES } from '../types';
-import { getPlantsToReorder, updatePlant } from '../api';
+import { getPlantsToReorder, markOrdered } from '../api';
 
 const plants = ref<Plant[]>([]);
 
@@ -11,16 +12,17 @@ const getTypeIcon = (type: string | undefined): string => {
   return found?.icon || '-';
 };
 
-const loadPlants = async () => {
-  plants.value = await getPlantsToReorder();
-};
+const { loading, loadError, load } = useLoadState();
+const loadPlants = () => load(async () => { plants.value = await getPlantsToReorder(); });
 
+const orderingId = ref<number | null>(null);
 const markAsOrdered = async (plant: Plant) => {
-  await updatePlant({ ...plant, needs_reorder: false });
-  await loadPlants();
+  if (orderingId.value !== null) return;
+  orderingId.value = plant.id!;
+  try { await markOrdered(plant); await loadPlants(); } catch {} finally { orderingId.value = null; }
 };
 
-onMounted(loadPlants);
+onMounted(() => loadPlants().catch(() => {}));
 </script>
 
 <template>
@@ -31,7 +33,9 @@ onMounted(loadPlants);
 
     <p class="description">Seeds that need to be reordered for next season.</p>
 
-    <table v-if="plants.length > 0">
+    <p v-if="loading" role="status" class="empty">Loading plants…</p>
+    <div v-else-if="loadError" class="load-error" role="alert"><p>{{ loadError }}</p><button @click="loadPlants">Try again</button></div>
+    <table v-else-if="plants.length > 0">
       <thead>
         <tr>
           <th>Name</th>
@@ -44,7 +48,7 @@ onMounted(loadPlants);
           <td>{{ plant.name }}</td>
           <td class="icon-cell" :title="plant.plant_type?.replace('_', '/')">{{ getTypeIcon(plant.plant_type) }}</td>
           <td class="action-cell">
-            <button class="ordered-btn" @click="markAsOrdered(plant)">Ordered</button>
+            <button class="ordered-btn" :disabled="orderingId !== null" @click="markAsOrdered(plant)">Ordered</button>
           </td>
         </tr>
       </tbody>
@@ -116,7 +120,7 @@ th {
 
 .ordered-btn {
   padding: 0.25rem 0.5rem;
-  background: #4caf50;
+  background: #386145;
   color: white;
   border: none;
   border-radius: 4px;
@@ -135,3 +139,5 @@ th {
   font-size: 0.85rem;
 }
 </style>
+
+<style scoped>.row-name {border:0;background:transparent;text-align:left;padding:0;color:inherit;cursor:pointer;}.load-error {margin:24px 0;padding:16px;border:1px solid #e6c3b8;background:#fff6f1;}.load-error button {margin-top:10px;padding:7px 12px;}.record-count {font-weight:400;color:#617052;font-size:13px;margin-left:8px;}</style>

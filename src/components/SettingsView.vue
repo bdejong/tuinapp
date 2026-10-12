@@ -1,149 +1,69 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { importPlantsTsv, getDatabasePath, moveDatabase } from '../api';
-import { save } from '@tauri-apps/plugin-dialog';
-
-const importing = ref(false);
-const message = ref('');
-const dbPath = ref('');
-const dbMessage = ref('');
-const moving = ref(false);
-
-onMounted(async () => {
-  dbPath.value = await getDatabasePath();
-});
-
-const handleFileSelect = async (event: Event) => {
-  const input = event.target as HTMLInputElement;
-  if (!input.files?.length) return;
-
-  const file = input.files[0];
-  const content = await file.text();
-
-  importing.value = true;
-  message.value = '';
-
-  try {
-    const count = await importPlantsTsv(content);
-    message.value = `Successfully imported ${count} plants!`;
-  } catch (err) {
-    message.value = `Error: ${err}`;
-  } finally {
-    importing.value = false;
-    input.value = '';
-  }
+import { useSessionRestore } from '../composables/useSessionRestore';
+import { ref, onMounted, onUnmounted } from 'vue';
+import { previewImport, importPlantsTsv, getBackupStatus, createBackup, verifyBackup, downloadBackup, type BackupStatus } from '../api';
+const status = ref<BackupStatus | null>(null); const busy = ref(false); const message = ref(''); const content = ref('');
+const preview = ref<{count: number; names: string[]} | null>(null);
+const formatDate = (date?: string | null) => date ? new Date(date).toLocaleString() : 'Not yet';
+const statusError = ref('');
+const statusLoading = ref(true);
+const refresh = async () => {
+  statusError.value = '';
+  try { status.value = await getBackupStatus(); }
+  catch (error) { statusError.value = error instanceof Error ? error.message : 'Could not load backup status.'; }
+  finally { statusLoading.value = false; }
 };
-
-const handleBrowseAndMove = async () => {
-  const selected = await save({
-    defaultPath: 'tuinapp.db',
-    filters: [{ name: 'Database', extensions: ['db'] }],
-    title: 'Choose new database location',
-  });
-
-  if (!selected) return;
-
-  moving.value = true;
-  dbMessage.value = '';
-
+let timer: ReturnType<typeof setInterval>;
+onMounted(() => { refresh(); timer = setInterval(refresh, 60000); }); onUnmounted(() => clearInterval(timer));
+async function backup(verify = false) {
+  busy.value = true; message.value = '';
+  try { status.value = await (verify ? verifyBackup() : createBackup()); message.value = verify ? 'A backup was restored into a temporary database and verified successfully.' : 'Backup created and verified.'; }
+  catch {} finally { busy.value = false; }
+}
+async function fileSelected(event: Event) {
+  const input = event.target as HTMLInputElement; const file = input.files?.[0]; if (!file) return;
+  busy.value = true; message.value = ''; preview.value = null;
+  try { content.value = await file.text(); preview.value = await previewImport(content.value); }
+  catch {} finally { busy.value = false; input.value = ''; }
+}
+async function download() {
+  busy.value = true; message.value = '';
   try {
-    const result = await moveDatabase(selected);
-    dbMessage.value = result;
-    dbPath.value = selected;
-  } catch (err) {
-    dbMessage.value = `Error: ${err}`;
-  } finally {
-    moving.value = false;
-  }
-};
+    const blob = await downloadBackup();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a'); link.href = url; link.download = 'tuinapp-backup.zip';
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    message.value = 'Your verified backup download is ready.';
+    await refresh();
+  } catch {} finally { busy.value = false; }
+}
+async function importFile() {
+  busy.value = true; message.value = '';
+  try { const result = await importPlantsTsv(content.value); message.value = `Imported ${result.count} plants. A recovery backup was created first.`; content.value = ''; preview.value = null; await refresh(); }
+  catch {} finally { busy.value = false; }
+}
+useSessionRestore(() => { void refresh(); });
 </script>
-
 <template>
-  <div class="settings-view">
-    <h1>Settings</h1>
-
-    <div class="section">
-      <h2>Database Location</h2>
-      <p>Current location:</p>
-      <code class="path">{{ dbPath }}</code>
-      <p>Move database to a new location (e.g., Google Drive folder):</p>
-      <button class="browse-btn" @click="handleBrowseAndMove" :disabled="moving">
-        {{ moving ? 'Moving...' : 'Browse & Move Database' }}
-      </button>
-      <p v-if="dbMessage" :class="{ error: dbMessage.startsWith('Error'), success: !dbMessage.startsWith('Error') }">
-        {{ dbMessage }}
-      </p>
-    </div>
-
-    <div class="section">
-      <h2>Import Data</h2>
-      <p>Import plants from a TSV file (Tab-separated values)</p>
-      <input
-        type="file"
-        accept=".tsv,.txt"
-        @change="handleFileSelect"
-        :disabled="importing"
-      />
-      <p v-if="message" :class="{ error: message.startsWith('Error') }">
-        {{ message }}
-      </p>
-    </div>
+  <div class="settings-view"><h1>Settings & backups</h1><p class="intro">Your garden is saved on the server as you work.</p>
+    <p v-if="message" class="success" role="status">{{ message }}</p>
+    <section><h2>Automatic backups</h2><p>A verified snapshot is created every hour, even when the website is closed.</p>
+      <p v-if="statusLoading" role="status">Checking backups…</p>
+      <p v-if="statusError" class="error" role="alert">{{ statusError }} <button @click="refresh">Try again</button></p>
+      <dl v-if="status"><dt>Latest successful backup</dt><dd>{{ formatDate(status.latest?.created_at) }}</dd><dt>Last restore test</dt><dd>{{ formatDate(status.last_restore_verified_at) }}</dd><dt v-if="status.latest">Records in latest backup</dt><dd v-if="status.latest">{{ status.latest.plants }} plants · {{ status.latest.activities }} activities</dd></dl>
+      <p v-if="status?.last_error" class="error" role="alert">The last backup failed: {{ status.last_error }}</p>
+      <p v-if="status?.latest && Date.now() - new Date(status.latest.created_at).getTime() > 7200000" class="error">Backups are overdue. Please check the server.</p>
+      <p class="storage-note">Backups are currently stored on this server. Independent, encrypted backup storage will be configured with hosting.</p>
+      <div class="actions"><button :disabled="busy" @click="backup()">Back up now</button><button :disabled="busy" @click="backup(true)">Test recovery</button><button :disabled="busy" @click="download">Download backup</button></div>
+      <p class="hint">Recovery uses a separate database and never replaces your garden automatically.</p>
+    </section>
+    <section><h2>Import a plant spreadsheet</h2><p>Select a TSV with a name column and 24 early/late period columns. Use Z for sowing and P for planting.</p>
+      <label class="file-button">Choose TSV <input type="file" accept=".tsv,.txt" @change="fileSelected" :disabled="busy" /></label>
+      <div v-if="preview" class="preview"><h3>{{ preview.count }} plants ready to import</h3><p>{{ preview.names.join(' · ') }}</p><p>These will be added as new records. Matching plant names are allowed. The same file cannot be imported twice.</p><button :disabled="busy" @click="importFile">Import {{ preview.count }} plants</button><button class="secondary" :disabled="busy" @click="preview = null; content = ''">Cancel</button></div>
+    </section>
   </div>
 </template>
-
 <style scoped>
-.settings-view {
-  padding: 1rem;
-}
-
-.section {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 8px;
-  margin-bottom: 1rem;
-}
-
-.section h2 {
-  margin-bottom: 0.5rem;
-  font-size: 1rem;
-}
-
-.section p {
-  color: #666;
-  margin-bottom: 0.5rem;
-  font-size: 0.85rem;
-}
-
-.path {
-  display: block;
-  background: #f5f5f5;
-  padding: 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  margin-bottom: 1rem;
-  word-break: break-all;
-}
-
-.browse-btn {
-  padding: 0.5rem 1rem;
-  background: #4caf50;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.85rem;
-  margin-bottom: 0.5rem;
-}
-
-.browse-btn:disabled {
-  background: #ccc;
-}
-
-.error {
-  color: #f44336;
-}
-
-.success {
-  color: #4caf50;
-}
+.settings-view {padding:24px;max-width:1000px;}h1 {font-size:24px;margin-bottom:8px;}.intro {color:#697263;margin-bottom:24px;}section {background:white;padding:24px;border:1px solid #dce2d5;border-radius:8px;margin-bottom:20px;}h2 {font-size:18px;margin-bottom:14px;}p {line-height:1.6;margin-bottom:14px;color:#616d5b;}dl {display:grid;grid-template-columns:220px 1fr;gap:12px;margin:20px 0;}dt {color:#58694e;}dd {font-weight:600;}.actions {display:flex;gap:10px;align-items:center;}button,.button {display:inline-block;font-size:13px;padding:10px 14px;border:0;border-radius:5px;background:#386145;color:white;cursor:pointer;text-decoration:none;}button:disabled {opacity:.5;cursor:wait;}.hint {font-size:12px;margin-top:12px;}.storage-note {background:#fff5df;padding:12px;border-radius:4px;color:#786127;}.error {color:#a33229;}.success {background:#e8f2e2;padding:14px;border-radius:6px;}.file-button {display:block;}.file-button input {margin-left:12px;}.preview {padding:18px;background:#f3f6ef;margin-top:20px;}.preview h3 {margin-bottom:12px;}.secondary {margin-left:8px;background:#dce2d5;color:#354e31;}
 </style>

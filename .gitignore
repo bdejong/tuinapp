@@ -26,3 +26,22 @@ Thumbs.db
 # Worktrees
 .worktrees/
 .venv/
+
+# Private web runtime data and credentials (never commit garden databases)
+data/
+backups/
+.local/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.server.lock
+test-results/
+playwright-report/
+
+# Keep dependency versions reproducible even if a global ignore excludes lockfiles
+!Cargo.lock
+
+# Private reference-data print comparisons
+/output/pdf/
+/tmp/pdfs/

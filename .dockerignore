@@ -1,0 +1,18 @@
+.git
+node_modules
+target
+src-tauri
+data
+backups
+.local
+.env*
+*.sqlite*
+*.db*
+dist
+test-results
+playwright-report
+docs
+
+# Private garden print comparisons
+output/pdf
+tmp/pdfs

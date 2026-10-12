@@ -1,26 +1,32 @@
 {
-  "name": "tuinapp-scaffold",
+  "name": "tuinapp",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 127.0.0.1",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "server": "node scripts/cargo.mjs run --bin tuinapp-server --",
+    "test": "node scripts/cargo.mjs test --workspace",
+    "test:golden": "node scripts/cargo.mjs test --workspace golden_database -- --ignored --nocapture",
+    "test:e2e": "playwright test",
+    "check": "npm run build && npm test && npm run test:ui",
+    "test:ui": "vitest run",
+    "pretest:e2e": "npm run build && node scripts/cargo.mjs build --bin tuinapp-server"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-dialog": "^2.6.0",
-    "@tauri-apps/plugin-fs": "^2.4.5",
-    "@tauri-apps/plugin-opener": "^2",
-    "vue": "^3.5.13"
+    "vue": "^3.5.43"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2",
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.56.0",
     "@vitejs/plugin-vue": "^5.2.1",
+    "@vue/test-utils": "^2.4.6",
+    "jsdom": "^26.1.0",
     "typescript": "~5.6.2",
     "vite": "^6.0.3",
+    "vitest": "^4.1.11",
     "vue-tsc": "^2.1.10"
   }
 }
