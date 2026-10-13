@@ -1,4 +1,4 @@
-import { authorize, login, loginParameters, logout, sessionInfo, issueSession, mutationSessionGuard } from './auth';
+import { authorize, login, loginParameters, logout, sessionInfo, mutationSessionGuard } from './auth';
 import { getActivities, getPlants, oneActivity, onePlant } from './db';
 import { validActivity, validPlant, type Activity, type MonthData, type Plant } from './models';
 import { handleBackups } from './backups';
@@ -177,12 +177,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response> {
       else if (path === '/api/activities' && request.method === 'GET') response = json(await getActivities(env));
       else if (path === '/api/activities' && request.method === 'POST') response = await createActivity(await readJson(request), env, session.tokenHash);
       else if (path === '/api/backups' || path.startsWith('/api/backups/')) {
-        response = await handleBackups(request, env, { tokenHash: session.tokenHash });
-        if (path === '/api/backups/restore' && request.method === 'POST' && response.ok) {
-          const issued = await issueSession(env);
-          const body = await response.json() as Record<string, unknown>;
-          response = json({ ...body, csrf_token: issued.csrf, restore_epoch: issued.restoreEpoch }, 200, { 'set-cookie': issued.cookie });
-        }
+        response = await handleBackups(request, env);
       }
       else {
         let match = path.match(/^\/api\/plants\/(\d+)(?:\/(reorder))?$/u);

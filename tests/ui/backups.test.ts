@@ -1,10 +1,10 @@
 import { it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import SettingsView from '../../src/components/SettingsView.vue';
-import { getBackupStatus, downloadBackup, restoreBackup, type BackupStatus, type BackupEntry } from '../../src/api';
-vi.mock('../../src/api',async original=>({ ...await original<typeof import('../../src/api')>(), getBackupStatus:vi.fn(),downloadBackup:vi.fn(),restoreBackup:vi.fn() }));
+import { getBackupStatus, downloadBackup, type BackupStatus, type BackupEntry } from '../../src/api';
+vi.mock('../../src/api',async original=>({ ...await original<typeof import('../../src/api')>(), getBackupStatus:vi.fn(),downloadBackup:vi.fn() }));
 const saved: BackupEntry = {file:'tuinapp-one.sql',created_at:'2026-01-02T10:00:00Z',reason:'scheduled',plants:177,activities:9,bytes:53248,uploaded_at:null};
-const empty: BackupStatus = {latest:null,backups:[],last_error:null,last_restore_verified_at:null,last_checked_at:null,checked_unchanged:false,check_interval_seconds:300,offsite:null,storage:'r2'};
+const empty: BackupStatus = {latest:null,backups:[],last_error:null,last_checked_at:null,checked_unchanged:false,check_interval_seconds:300,offsite:null,storage:'r2'};
 const history: BackupStatus = {...empty,latest:saved,backups:[saved],last_checked_at:new Date().toISOString()};
 beforeEach(()=>{vi.resetAllMocks();vi.mocked(getBackupStatus).mockResolvedValue(history);});
 afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();});
@@ -12,11 +12,11 @@ it('waits for history without claiming there are no backups',async()=>{
   vi.mocked(getBackupStatus).mockReturnValue(new Promise(()=>{}));const w=mount(SettingsView);
   expect(w.get('[role=status]').text()).toBe('Checking backups…');expect(w.text()).not.toContain('No saved backups');expect(w.find('table').exists()).toBe(false);
 });
-it('shows the empty state, R2 storage, and a guarded restore form',async()=>{
+it('shows the empty state and R2 storage without browser restore controls',async()=>{
   vi.mocked(getBackupStatus).mockResolvedValue(empty);const w=mount(SettingsView);await flushPromises();
   expect(w.text()).toContain('No saved backups yet');expect(w.text()).toContain('automatically');expect(w.text()).toContain('Not yet');expect(w.text()).toContain('stored in Cloudflare R2');
-  expect(w.find('input[type=file]').exists()).toBe(true);expect(w.find('input[type=checkbox]').exists()).toBe(true);expect(w.find('a').exists()).toBe(false);
-  expect(w.get('button.restore-button').attributes('disabled')).toBeDefined();
+  expect(w.find('input[type=file]').exists()).toBe(false);expect(w.find('input[type=checkbox]').exists()).toBe(false);expect(w.find('a').exists()).toBe(false);
+  expect(w.text()).not.toMatch(/restore from|restore garden/i);
 });
 it('lists dates, counts, size and links to existing backups only',async()=>{
   const w=mount(SettingsView);await flushPromises();const row=w.get('tbody tr');
@@ -24,9 +24,9 @@ it('lists dates, counts, size and links to existing backups only',async()=>{
   expect(row.get('time').attributes('datetime')).toBe(saved.created_at);expect(row.get('a').attributes('href')).toBe('/api/backups/tuinapp-one.sql/download');
   expect(row.get('a').attributes('aria-label')).toContain('Download backup from');expect(row.get('a').text()).toBe('Download SQL dump');
 });
-it('shows pre-update recovery points and the count without exposing internal checksums',async()=>{
+it('shows pre-update safety copies and the count without exposing internal checksums',async()=>{
   vi.mocked(getBackupStatus).mockResolvedValue({...history,backups:[{...saved,file:'tuinapp-two.sql',reason:'before-migration'},saved]});const w=mount(SettingsView);await flushPromises();
-  expect(w.findAll('tbody tr')).toHaveLength(2);expect(w.get('h3').text()).toBe('Saved backups (2)');expect(w.text()).toContain('Before an update · kept for recovery');
+  expect(w.findAll('tbody tr')).toHaveLength(2);expect(w.get('h3').text()).toBe('Saved backups (2)');expect(w.text()).toContain('Before an update · safety copy');
 });
 it('uses the configured check interval and distinguishes a quiet garden from overdue backups',async()=>{
   vi.mocked(getBackupStatus).mockResolvedValue({...history,check_interval_seconds:600,checked_unchanged:true});const w=mount(SettingsView);await flushPromises();
@@ -66,23 +66,9 @@ it('downloads the selected saved version once and releases its object URL',async
 it('does not start a download after leaving Settings while the file was loading',async()=>{
   let finish!:(b:Blob)=>void;vi.mocked(downloadBackup).mockReturnValue(new Promise(r=>finish=r));const click=vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});const w=mount(SettingsView);await flushPromises();await w.get('a').trigger('click');w.unmount();finish(new Blob(['ZIP']));await flushPromises();expect(click).not.toHaveBeenCalled();
 });
-it('requires file selection and explicit replacement confirmation, then refreshes after restore',async()=>{
-  const w=mount(SettingsView);await flushPromises();const input=w.get('input[type=file]');const file=new File(['INSERT INTO plants(name) VALUES (\'Basil\');'],'garden.sql',{type:'application/sql'});
-  Object.defineProperty(input.element,'files',{configurable:true,value:[file]});await input.trigger('change');
-  expect(w.get('button.restore-button').attributes('disabled')).toBeDefined();
-  await w.get('input[type=checkbox]').setValue(true);expect(w.get('button.restore-button').attributes('disabled')).toBeUndefined();
-  await w.get('button.restore-button').trigger('click');await flushPromises();expect(restoreBackup).toHaveBeenCalledExactlyOnceWith(file);expect(getBackupStatus).toHaveBeenCalledTimes(2);
-  expect(w.get('[role=status]').text()).toContain('Garden restored');expect(w.get('input[type=file]').element.value).toBe('');expect(w.get('input[type=checkbox]').element.checked).toBe(false);
-});
-it('keeps the chosen dump after a failed restore so it can be retried',async()=>{
-  vi.mocked(restoreBackup).mockRejectedValue(new Error('Dump is invalid'));const w=mount(SettingsView);await flushPromises();const input=w.get('input[type=file]');const file=new File(['bad'],'garden.sql');
-  Object.defineProperty(input.element,'files',{configurable:true,value:[file]});await input.trigger('change');await w.get('input[type=checkbox]').setValue(true);await w.get('button.restore-button').trigger('click');await flushPromises();
-  expect(w.get('[role=alert]').text()).toContain('Dump is invalid');expect(w.get('.selected-file').text()).toContain('garden.sql');expect(w.get('input[type=checkbox]').element.checked).toBe(true);expect(w.get('button.restore-button').attributes('disabled')).toBeUndefined();
-});
-it('rejects SQL dumps above the upload limit before making a restore request',async()=>{
-  const w=mount(SettingsView);await flushPromises();const input=w.get('input[type=file]');
-  const oversized=new File([new Uint8Array(5*1024*1024+1)],'large.sql',{type:'application/sql'});
-  Object.defineProperty(input.element,'files',{configurable:true,value:[oversized]});await input.trigger('change');await w.get('input[type=checkbox]').setValue(true);
-  expect(w.get('[role=alert]').text()).toContain('no larger than 5 MiB');expect(w.get('button.restore-button').attributes('disabled')).toBeDefined();
-  expect(restoreBackup).not.toHaveBeenCalled();w.unmount();
+it('keeps the settings page download-only with no file chooser or destructive action',async()=>{
+  const w=mount(SettingsView);await flushPromises();
+  expect(w.find('input[type=file]').exists()).toBe(false);expect(w.find('input[type=checkbox]').exists()).toBe(false);
+  expect(w.findAll('button').map(button=>button.text())).not.toContain('Restore garden');
+  expect(w.text()).not.toMatch(/restore from a sql dump|replaces the current garden/i);
 });

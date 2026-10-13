@@ -11,7 +11,7 @@ import LoginView from '../../src/components/LoginView.vue';
 vi.mock('../../src/api');
 const plant = {id:1,name:'Basil',sun_requirements:3,sow_periods:1,plant_periods:8388608,needs_reorder:true,revision:1};
 const activity = {id:2,name:'Prune',active_periods:1,description:'After frost',revision:1};
-const status: api.BackupStatus = {latest:null,backups:[],last_error:null,last_restore_verified_at:null,last_checked_at:null,checked_unchanged:false,check_interval_seconds:300,offsite:null};
+const status: api.BackupStatus = {latest:null,backups:[],last_error:null,last_checked_at:null,checked_unchanged:false,check_interval_seconds:300,offsite:null};
 const button = (wrapper:any,name:string) => wrapper.findAll('button').find((b:any)=>b.text()===name)!;
 beforeEach(() => {
   vi.resetAllMocks();

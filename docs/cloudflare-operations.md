@@ -1,8 +1,10 @@
 # Cloudflare operations
 
-TuinApp runs as a Vue site and TypeScript Pages Function, with D1 storage, private R2 dumps and a daily scheduled Worker. The browser generates printable PDFs from authenticated calendar data using the TypeScript renderer, keeping that work outside the Worker CPU budget. DNS remains at Gandi. Rust sources are retained as a migration reference; the Cloudflare build and tests do not require Rust.
+TuinApp runs as a Vue site and TypeScript Pages Function, with D1 storage, private R2 dumps and a daily scheduled Worker. The browser generates printable PDFs from authenticated calendar data using the TypeScript renderer, keeping that work outside the Worker CPU budget. DNS remains at Gandi.
 
-## Account setup (once access is available)
+## Account setup
+
+Production was provisioned on 13 October 2026: Pages `tuinapp`, D1 `tuinapp`, private R2 `tuinapp-backups`, and scheduler `tuinapp-backups`. The custom domain is `https://tuin.familiedejong.be`; Gandi serves `tuin CNAME tuinapp.pages.dev.` with a 300-second TTL. GitHub production credentials and the deployment enable switch are configured. Do not initialize or replace the live garden as part of routine setup.
 
 Use Cloudflare Workers **Free**, D1, Pages and **R2 Standard**. Enable R2 on the account (Cloudflare may request billing details). Create a Direct Upload Pages project; GitHub Actions below owns deployments, so do not also enable Cloudflare's automatic Git builds.
 
@@ -26,22 +28,18 @@ npx wrangler pages secret put TUINAPP_SESSION_SECRET --project-name tuinapp
 
 Paste only each value at its secret prompt. The password tool hides interactive input; a password manager can also pipe a password to it. Do not commit secrets. Authentication derives a salted PBKDF2 proof in the browser and verifies its digest on the server, avoiding the Worker password-hashing/CPU limit. The proof is password-equivalent and must only travel over HTTPS (loopback HTTP is for development). Keep the generated verifier private too. Changing the session secret invalidates existing sessions; rotate it alongside a password change.
 
-Initialize a new database and import only the verified converted golden dump:
+Initialize a new, empty database only when setting up a separate environment:
 
 ```sh
 npm run cloudflare:data -- verify-migrations
-npm run cloudflare:data -- verify-golden data/cloudflare-golden
 npx wrangler d1 migrations apply DB --remote
-npx wrangler d1 execute DB --remote --file data/cloudflare-golden/tuinapp-golden.sql
 ```
 
-These import instructions are for a **new, empty** database. For an existing garden use Settings → Restore from dump, which first creates a verified recovery dump. The original golden file stays read-only and is never deployed directly. If edits were made in the previous local app after the golden copy, reconcile those before cutover; they are not synchronized automatically.
-
-The golden conversion script refuses an existing output directory. Run `npm run cloudflare:data -- convert-golden /absolute/path/to/db.golden.sqlite data/cloudflare-golden` only when a new output is required. The manifest checks every value and the original checksum. Private golden outputs are ignored by Git and excluded from CI.
+For an existing garden, use its current live database and R2 backups. Restore a downloaded application dump with the operator utility below; no private reference database is imported during provisioning.
 
 ## GitHub push deployments
 
-The workflow `.github/workflows/build.yml` tests every push and pull request. After a successful check on `main`, the deployment job runs only when repository variable `CLOUDFLARE_DEPLOY_ENABLED` is `true`. Leave it unset until provisioning, private-data import and secrets are ready. Use a GitHub `production` environment; repository branch protection can require the test job before merging.
+The workflow `.github/workflows/build.yml` tests every push and pull request. After a successful check on `main`, the deployment job runs only when repository variable `CLOUDFLARE_DEPLOY_ENABLED` is `true`. Keep it enabled only while the configured production account, secrets and deployment credentials are ready. Use a GitHub `production` environment; repository branch protection can require the test job before merging.
 
 Configure these GitHub Actions variables (repository or `production` environment, except the enable switch must be a repository variable):
 
@@ -85,17 +83,29 @@ Use the actual assigned Pages hostname, not a guessed name or `workers.dev`. Reg
 
 The scheduled Worker checks at **02:15 UTC daily** (03:15 Belgian winter time / 04:15 summer time). It creates a dump after garden changes, including updates and deletes, and creates no duplicate on unchanged days. Failed uploads remain eligible for the next scheduled retry; Settings reports failures and overdue checks. Check the scheduled invocation logs after first deployment. The next daily run is the first automatic backup unless a restore has already made a recovery point.
 
-Settings shows successful application dumps in R2, their dates, counts and sizes. Downloads are restricted SQL files with integrity framing. To restore, choose a downloaded dump, confirm replacement and submit. Uploads are limited to 5 MiB and to the number of chunks that D1 can restore atomically. The app validates the whole file before changes, saves and verifies a `before-restore` recovery dump in R2, and replaces the garden in one D1 transaction. Concurrent edits cause restore to fail safely. Restoring invalidates stale sessions/drafts to prevent old screens from overwriting restored data.
+Settings shows successful application dumps in R2, their dates, counts and sizes. It provides downloads only: there is no restore form or restore API. Downloads are restricted SQL files with integrity framing.
+
+Restore a downloaded application dump from a trusted checkout with Node 24 and Cloudflare credentials:
+
+```sh
+npm ci
+npx wrangler login
+./scripts/cloudflare-restore.sh /absolute/path/to/downloaded-backup.sql --config wrangler.jsonc --confirm-restore
+```
+
+At the terminal prompt type `RESTORE tuinapp`. The utility validates the file locally and generates canonical SQL; it never executes the supplied file directly. Before replacement, it exports the live D1 database, uploads a recovery copy to private R2 under `releases/manual-restore-...`, downloads it again and checks SHA-256. It verifies the released migration checksums and exact live migration ledger. The native D1 file import atomically guards the schema, generation and restore epoch, replaces garden rows and sequences, and revokes sessions. Concurrent edits invalidate the guard and abort the import. Sign in again after a successful restore. Stale browser drafts are invalidated by the changed restore epoch.
+
+An interrupted import can have an uncertain outcome: inspect the database before retrying. The utility prints the recovery key if submission fails or verification cannot confirm completion. Keep the downloaded source file until you have checked the restored garden.
 
 The newest 90 scheduled dumps are retained. Named recovery points are retained for manual review. Protected recovery points and deployment exports can accumulate; review R2 usage and remove obsolete release recovery exports deliberately after a tested replacement exists. Do not set a blanket bucket expiry that can remove the only backup of an unchanged garden.
 
-`backups/` contains the application dumps shown in Settings. `releases/` contains native full D1 exports made by GitHub deployment, including infrastructure/auth tables. These are an administrative disaster-recovery format and are **not** accepted by Settings. For catastrophic recovery, create a fresh D1 database, import a verified native export using Wrangler, check its migration ledger and schema version, rotate the session secret, update both production bindings and redeploy. Keep the old database until the recovered one is verified. Never execute an untrusted SQL file as an administrative import.
+`backups/` contains the application dumps shown in Settings. `releases/` contains native full D1 exports made by GitHub deployment, including infrastructure/auth tables. These are an administrative disaster-recovery format and are **not** accepted by the application-dump restore utility. For catastrophic recovery, create a fresh D1 database, import a verified native export using Wrangler, check its migration ledger and schema version, rotate the session secret, update both production bindings and redeploy. Keep the old database until the recovered one is verified. Never execute an untrusted SQL file as an administrative import.
 
-Keep an independent copy of the golden source and occasional downloaded dumps outside the Cloudflare account. R2 recovery protects against application data mistakes, but D1 and R2 in the same account share account-level risk.
+Keep occasional downloaded dumps outside the Cloudflare account. R2 recovery protects against application data mistakes, but D1 and R2 in the same account share account-level risk.
 
 ## Future schema changes
 
-Add a numbered migration; never edit a released one. Update `cloudflare/migration-checksums.json`, the expected application schema version and dump conversion rules together. CI compares already-published SQL files against Git history. Test migration from representative previous data, rerunning the migration ledger, rollback on intentional failure, and restore of supported older dumps. Include golden-data checks locally without committing private fixtures.
+Add a numbered migration; never edit a released one. Update `cloudflare/migration-checksums.json`, the expected application schema version and dump compatibility rules together. CI compares already-published SQL files against Git history. Test migration from representative previous schemas, rerunning the migration ledger, rollback on intentional failure, and restore of supported older dumps.
 
 Use additive changes first, deploy code that handles both schemas, then remove obsolete fields in a later migration. D1 migration batches roll back on failure; that cannot prove every future SQL change is correct. The pre-deployment R2 dump and failed-migration tests provide a recovery path. Old dump versions must either have a tested upgrade path or be explicitly rejected before changing data. Cloudflare provides [D1 migration guidance](https://developers.cloudflare.com/d1/reference/migrations/).
 
@@ -103,7 +113,7 @@ Use additive changes first, deploy code that handles both schemas, then remove o
 
 As checked on 12 October 2026, Workers Free permits 100,000 dynamic requests/day with 10ms CPU per HTTP request or cron invocation; assets served directly by Pages do not consume Function requests. D1 Free includes 5 million rows read/day, 100,000 rows written/day and 5GB total storage. Free D1 has 10 databases with a 500MB per-database limit. R2 Standard includes 10GB-month storage, 1 million Class A and 10 million Class B operations per month, with free egress. These allowances are shared across applications; R2 excess usage can be billed. [Workers limits](https://developers.cloudflare.com/workers/platform/limits/), [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/), [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), [R2 pricing](https://developers.cloudflare.com/r2/pricing/).
 
-This small garden should fit the storage and request allowances comfortably. Local tests cannot prove Cloudflare's production CPU accounting. After account access, measure login, largest-month PDF, backup and restore CPU; check D1 query usage, R2 billing/usage and scheduled execution before declaring production ready. Use one D1 database and private bucket per application; the current Free account limit is five cron triggers, so several apps may eventually share a scheduler while keeping separate data bindings.
+This small garden should fit the storage and request allowances comfortably. Local tests cannot prove Cloudflare's production CPU accounting. Measured production HTTP requests for login, garden lists and PDF data used 2–7 ms CPU. PDF generation runs in the browser and restore runs through the operator utility. Scheduled backup CPU still needs its own production measurement; continue checking D1 and R2 usage as data grows. Use one D1 database and private bucket per application; the current Free account limit is five cron triggers, so several apps may eventually share a scheduler while keeping separate data bindings.
 
 ## Local use
 
@@ -122,6 +132,4 @@ Use the URL printed by Wrangler (default port 8788). The real Cloudflare credent
 ```sh
 npm run check
 npm run test:e2e
-TUINAPP_GOLDEN_DB=/absolute/path/to/db.golden.sqlite npm run test:golden
-TUINAPP_GOLDEN_DB=/absolute/path/to/db.golden.sqlite npm run test:e2e
 ```

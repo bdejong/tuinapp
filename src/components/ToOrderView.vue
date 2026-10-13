@@ -138,6 +138,12 @@ th {
   padding: 1.5rem;
   font-size: 0.85rem;
 }
+@media (max-width: 700px) {
+  .to-order-view { padding: 16px 12px; min-width: 0; }
+  th, td { padding: 10px 6px; }
+  td:first-child { overflow-wrap: anywhere; }
+  .ordered-btn { min-height: 44px; padding: 8px 10px; }
+}
 </style>
 
 <style scoped>.row-name {border:0;background:transparent;text-align:left;padding:0;color:inherit;cursor:pointer;}.load-error {margin:24px 0;padding:16px;border:1px solid #e6c3b8;background:#fff6f1;}.load-error button {margin-top:10px;padding:7px 12px;}.record-count {font-weight:400;color:#617052;font-size:13px;margin-left:8px;}</style>

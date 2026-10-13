@@ -23,7 +23,7 @@ const sessionChecked = ref(false);
 const workspaceOpened = ref(false);
 const workspaceEpoch = ref(0);
 const errorMessage = ref('');
-const restoredMessage = ref('');
+const gardenChangedMessage = ref('');
 const signedIn = async () => {
   const restoring = workspaceOpened.value;
   authenticated.value = true; workspaceOpened.value = true; errorMessage.value = '';
@@ -31,11 +31,11 @@ const signedIn = async () => {
   if (restoring) window.dispatchEvent(new Event('session-restored'));
 };
 const sessionExpired = () => { authenticated.value = false; };
-const gardenRestored = () => {
-  // A restore may reuse ids and revisions from an old draft. Remount every view
-  // so no open form can be resubmitted against the restored garden.
+const gardenEpochChanged = () => {
+  // CLI restores advance the epoch; remount views so old forms cannot be
+  // resubmitted against different data after the user signs in again.
   currentView.value = 'plants'; plantSubView.value = 'list';
-  restoredMessage.value = 'Garden restored. The garden was reloaded and any open drafts were closed.';
+  gardenChangedMessage.value = 'Garden data changed outside this screen. The view was reloaded and any open drafts were closed.';
   workspaceEpoch.value++;
 };
 const showError = (event: Event) => { errorMessage.value = (event as CustomEvent<string>).detail; };
@@ -66,7 +66,7 @@ const handleKeydown = (e: KeyboardEvent) => {
 onMounted(async () => {
   window.addEventListener('api-error', showError);
   window.addEventListener('session-expired', sessionExpired);
-  window.addEventListener('garden-restored', gardenRestored);
+  window.addEventListener('garden-epoch-changed', gardenEpochChanged);
   try { await checkSession(); signedIn(); } catch {}
   sessionChecked.value = true;
   window.addEventListener('keydown', handleKeydown);
@@ -75,7 +75,7 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('api-error', showError);
   window.removeEventListener('session-expired', sessionExpired);
-  window.removeEventListener('garden-restored', gardenRestored);
+  window.removeEventListener('garden-epoch-changed', gardenEpochChanged);
   window.removeEventListener('keydown', handleKeydown);
 });
 </script>
@@ -85,13 +85,14 @@ onUnmounted(() => {
   <LoginView v-else-if="!authenticated" @signed-in="signedIn" />
   <div v-if="workspaceOpened" v-show="authenticated" :key="workspaceEpoch" class="app">
     <div v-if="errorMessage" class="error-banner" role="alert">{{ errorMessage }}<button @click="errorMessage = ''" aria-label="Dismiss error">×</button></div>
-    <div v-if="restoredMessage" class="restore-banner" role="status">{{ restoredMessage }}<button @click="restoredMessage = ''" aria-label="Dismiss restore notice">×</button></div>
+    <div v-if="gardenChangedMessage" class="garden-changed-banner" role="status">{{ gardenChangedMessage }}<button @click="gardenChangedMessage = ''" aria-label="Dismiss garden update notice">×</button></div>
     <nav class="sidebar">
       <h2>TuinApp</h2><p class="garden-label">GARDEN PLANNER</p>
       <ul>
         <li v-for="view in [{id:'plants',label:'Plants'},{id:'activities',label:'Activities'},{id:'calendar',label:'Calendar'},{id:'toorder',label:'To Order'},{id:'settings',label:'Settings'}]" :key="view.id">
           <button :aria-current="currentView === view.id ? 'page' : undefined" :class="{active:currentView===view.id}" @click="currentView = view.id as View">{{ view.label }}</button>
         </li>
+        <li class="mobile-sign-out"><button @click="signOut">Sign out</button></li>
       </ul>
       <button class="sign-out" @click="signOut">Sign out</button>
       <div class="quick-add">
@@ -128,7 +129,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
   color: #2e3929;
-  min-width: 900px;
+  min-width: 0;
 }
 
 @media print {
@@ -185,6 +186,7 @@ body {
   border-radius: 4px;
   margin-bottom: 0.25rem;
 }
+.sidebar li.mobile-sign-out { display: none; }
 
 .sidebar li:hover {
   background: rgba(255, 255, 255, 0.1);
@@ -253,20 +255,49 @@ body {
   color: #666;
   font-size: 1.25rem;
 }
+@media (max-width: 700px) {
+  .app { height: 100dvh; min-height: 0; }
+  .content { min-height: 0; padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+  .sidebar {
+    position: fixed; z-index: 900; inset: auto 0 0; width: 100vw; height: auto;
+    flex-basis: 100vw; padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+    box-shadow: 0 -3px 14px #1f35251f;
+  }
+  .sidebar h2, .sidebar .garden-label, .sidebar .sign-out, .sidebar .quick-add { display: none; }
+  .sidebar ul { display: flex; flex: none; gap: 2px; margin: 0; }
+  .sidebar li { flex: 1 1 0; min-width: 0; margin: 0; }
+  .sidebar li.mobile-sign-out { display: block; }
+  .sidebar li button {
+    display: flex; align-items: center; justify-content: center; text-align: center;
+    min-height: 52px; padding: 6px 2px; font-size: 0.68rem; line-height: 1.15;
+    white-space: nowrap;
+  }
+  .plants-container { min-height: 0; }
+  .tabs { position: sticky; top: 0; z-index: 2; }
+}
 </style>
 
 <style>
 button, input, select, textarea { font: inherit; }
 button:disabled { opacity: .55; cursor: wait; }
 button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 2px solid #7c9e61; outline-offset: 3px; }
+@media (max-width: 700px) {
+  button, select, input:not([type="checkbox"]) { min-height: 44px; }
+  input[type="checkbox"] { width: 24px; height: 24px; }
+}
 .error-banner { position: fixed; top: 16px; left: 220px; right: 28px; background: #fff1eb; color: #963c2e; border: 1px solid #e2b3a5; padding: 16px; z-index: 4000; border-radius: 6px; box-shadow: 0 4px 20px #0001; }
 .error-banner button { float: right; border: 0; background: transparent; cursor: pointer; margin-left: 18px; }
 .garden-label { font-size: 9px; letter-spacing: .15em; opacity: .65; margin: -5px 0 28px; }
 .sign-out { background: transparent; border: 1px solid #ffffff40; color: white; padding: 7px; margin: 12px 0; border-radius: 4px; cursor: pointer; }
 .loading-session { padding: 48px; color: #62745c; }
-.restore-banner { display:flex; justify-content:space-between; align-items:center; padding:12px 20px; background:#e9f2df; color:#285b38; border-bottom:1px solid #cbdcbc; }
-.restore-banner button { border:0; background:transparent; color:inherit; font-size:20px; cursor:pointer; }
+.garden-changed-banner { display:flex; justify-content:space-between; align-items:center; padding:12px 20px; background:#e9f2df; color:#285b38; border-bottom:1px solid #cbdcbc; }
+.garden-changed-banner button { border:0; background:transparent; color:inherit; font-size:20px; cursor:pointer; }
 @media print { body { min-width: 0; } .error-banner { display: none; } }
+@media (max-width: 700px) {
+  body { min-width: 0; }
+  .error-banner { top: 8px; left: 8px; right: 8px; padding: 12px; }
+  .garden-changed-banner { padding: 10px 12px; }
+}
 </style>
 
-<style scoped>.sidebar li {padding:0;}.sidebar li button {width:100%;text-align:left;border:0;background:transparent;color:inherit;padding:10px;border-radius:4px;cursor:pointer;}.sidebar li button.active {background:#ffffff20;}.sidebar li:hover {background:transparent;}.sidebar li button:hover {background:#ffffff14;}</style>
+<style scoped>.sidebar li {padding:0;}.sidebar li button {width:100%;text-align:left;border:0;background:transparent;color:inherit;padding:10px;border-radius:4px;cursor:pointer;}.sidebar li button.active {background:#ffffff20;}.sidebar li:hover {background:transparent;}.sidebar li button:hover {background:#ffffff14;}@media(max-width:700px){.sidebar ul li button{padding:6px 2px;text-align:center;white-space:nowrap;}}</style>

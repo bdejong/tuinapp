@@ -1,30 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-const source = process.env.TUINAPP_GOLDEN_DB;
-const hash = () => source ? createHash('sha256').update(readFileSync(source)).digest('hex') : '';
-let originalHash = '';
-test.beforeAll(() => { originalHash = hash(); });
-test.afterAll(() => { expect(hash()).toBe(originalHash); });
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await page.getByLabel('Password', { exact: true }).fill('tuinapp-browser-test-only-password');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Plants' })).toBeVisible();
-});
-
-test('golden records load without photo features', async ({ page }) => {
-  test.skip(!source, 'Run with TUINAPP_GOLDEN_DB to test private data');
-  const photoRequests: string[] = [];
-  page.on('request', request => { if (/\/api\/plants\/\d+\/photos/.test(request.url())) photoRequests.push(request.url()); });
-  await page.reload();
-  await expect(page.locator('.plant-list tbody tr')).toHaveCount(177);
-  expect(photoRequests).toHaveLength(0);
-  await expect(page.getByRole('columnheader',{name:'Photo',exact:true})).toHaveCount(0);
-  await page.getByText('To Order', { exact: true }).click();
-  await expect(page.locator('.to-order-view tbody tr')).toHaveCount(17);
-  await page.getByText('Activities', { exact: true }).first().click();
-  await expect(page.locator('.activity-list tbody tr')).toHaveCount(9);
 });
 
 test('desktop create, save another, overview edit and delete', async ({ page }) => {
@@ -88,7 +68,7 @@ test('calendar prints all categories and saved backups download', async ({ page 
   expect(readFileSync((await pdfDownload.path())!).subarray(0,5).toString()).toBe('%PDF-');
   await expect(page.getByRole('heading', { name: 'January in the garden' })).toBeVisible();
   await page.getByText('Settings', { exact: true }).click();
-  await expect(page.getByText('Last recovery check', {exact:true})).toBeVisible();
+  await expect(page.getByText('Changes are checked daily.', { exact: false })).toBeVisible();
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('link', { name: /Download backup from/ }).first().click();
   const download = await downloadPromise; expect(download.suggestedFilename()).toMatch(/^tuinapp-.*\.sql$/);
@@ -97,49 +77,16 @@ test('calendar prints all categories and saved backups download', async ({ page 
   await page.getByRole('button', { name: 'Delete', exact: true }).click();await page.getByRole('button', { name: 'Yes, Delete' }).click();
 });
 
-test('downloads a real SQL dump, rejects malformed uploads without changing the garden, then restores the dump', async ({ page, context }) => {
-  await page.getByRole('button', { name: '+ Add Plant', exact: true }).first().click();
-  await page.getByRole('dialog').getByLabel('Name', { exact: true }).fill('Restore roundtrip marker');
-  await page.getByRole('button', { name: 'Save & Close' }).click();
+test('keeps SQL backups downloadable without exposing a browser restore workflow', async ({ page }) => {
   await page.getByText('Settings', { exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Settings & backups' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Restore from a SQL dump' })).toHaveCount(0);
+  await expect(page.locator('input[type=file]')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Restore garden' })).toHaveCount(0);
   const downloadPromise = page.waitForEvent('download');
-  // Restore to the oldest (server-start) snapshot; prior browser projects may
-  // have added newer before-restore recovery snapshots to this shared fixture.
-  await page.locator('tbody tr').last().getByRole('link', { name: /Download backup from/ }).click();
+  await page.getByRole('link', { name: /Download backup from/ }).first().click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/^tuinapp-.*\.sql$/);
   const dump = readFileSync((await download.path())!);
   expect(dump.toString()).toContain('tuinapp-backup-v1');
-  expect(dump.toString()).not.toContain('Restore roundtrip marker');
-
-  const input = page.getByLabel('SQL dump file');
-  await input.setInputFiles({ name: 'broken.sql', mimeType: 'application/sql', buffer: Buffer.from('-- not a generated garden dump\nDROP TABLE plants;\n') });
-  await page.getByLabel('I understand this replaces my current garden.').check();
-  await page.getByRole('button', { name: 'Restore garden' }).click();
-  await expect(page.locator('.settings-view').getByRole('alert')).toContainText(/backup|dump|format/i);
-  await expect(page.getByText('Selected: broken.sql')).toBeVisible();
-  await page.getByText('Plants', { exact: true }).first().click();
-  await expect(page.getByRole('cell', { name: 'Restore roundtrip marker', exact: true })).toBeVisible();
-
-  const staleTab = await context.newPage();
-  await staleTab.goto('/');
-  await staleTab.getByRole('button', { name: '+ Add Plant', exact: true }).first().click();
-  await staleTab.getByRole('dialog').getByLabel('Name', { exact: true }).fill('Draft from before restore');
-
-  await page.getByText('Settings', { exact: true }).click();
-  await input.setInputFiles({ name: download.suggestedFilename(), mimeType: 'application/sql', buffer: dump });
-  await page.getByLabel('I understand this replaces my current garden.').check();
-  await page.getByRole('button', { name: 'Restore garden' }).click();
-  await expect(page.getByRole('heading', { name: 'Plants' })).toBeVisible();
-  await expect(page.getByRole('cell', { name: 'Restore roundtrip marker', exact: true })).toHaveCount(0);
-  await expect(page.locator('.restore-banner')).toContainText('open drafts were closed');
-
-  await staleTab.getByRole('button', { name: 'Save & Close' }).click();
-  await expect(staleTab.getByLabel('Password', { exact: true })).toBeVisible();
-  await staleTab.getByLabel('Password', { exact: true }).fill('tuinapp-browser-test-only-password');
-  await staleTab.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(staleTab.locator('.restore-banner')).toContainText('open drafts were closed');
-  await expect(staleTab.getByRole('dialog')).toHaveCount(0);
-  await expect(staleTab.getByRole('cell', { name: 'Draft from before restore', exact: true })).toHaveCount(0);
-  await staleTab.close();
 });

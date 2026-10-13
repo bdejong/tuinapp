@@ -42,7 +42,7 @@ beforeAll(async () => {
     TUINAPP_SESSION_SECRET: 'test-session-secret-must-be-at-least-32-bytes-long',
     TUINAPP_PUBLIC_ORIGIN: origin,
   };
-  for (const migration of ['0001_initial.sql', '0002_data_generation.sql']) {
+  for (const migration of ['0001_initial.sql', '0002_data_generation.sql', '0003_remove_plant_photos.sql']) {
     for (const sql of migrationStatements(await readFile(resolve('cloudflare/migrations', migration), 'utf8'))) await env.DB.prepare(sql).run();
   }
 });
@@ -112,23 +112,23 @@ describe('Cloudflare API', () => {
     expect((await call('/api/backups/status')).status).toBe(401);
     const auth = await signIn();
     expect((await call('/api/backups/status', 'GET', withAuth(auth))).status).toBe(200);
-    const missingConfirm = await call('/api/backups/restore', 'POST', withAuth(auth, 'not-a-dump'));
-    expect(missingConfirm.status).toBe(400);
-    expect((await missingConfirm.json() as {error:string}).error).toMatch(/confirmation/i);
+    const removedRestore = await call('/api/backups/restore', 'POST', { ...withAuth(auth, 'not-a-dump') });
+    expect(removedRestore.status).toBe(404);
+    expect((await env.DB.prepare('SELECT count(*) AS count FROM plants').first<{count:number}>())?.count).toBe(0);
 
     await env.DB.prepare('UPDATE app_state SET schema_version=999 WHERE id=1').run();
     expect((await call('/health')).status).toBe(503);
     expect((await call('/api/plants', 'GET', withAuth(auth))).status).toBe(503);
-    await env.DB.prepare('UPDATE app_state SET schema_version=2 WHERE id=1').run();
+    await env.DB.prepare('UPDATE app_state SET schema_version=3 WHERE id=1').run();
   });
 
-  it('rejects a write if restore invalidates its session after HTTP authorization but before SQL commits', async () => {
+  it('rejects a write if its session is revoked after HTTP authorization but before SQL commits', async () => {
     const auth = await signIn();
     const racedDb = new Proxy(env.DB, {
       get(target, property) {
         if (property === 'batch') return async (statements: D1PreparedStatement[]) => {
-          // Emulate restore committing in the interval after authorize() and
-          // sessionInfo() but immediately before the API's atomic write batch.
+          // Emulate session revocation after authorize() and sessionInfo() but
+          // immediately before the API's atomic write batch.
           await target.prepare('DELETE FROM auth_sessions').run();
           return target.batch(statements);
         };
@@ -180,15 +180,13 @@ describe('Cloudflare API', () => {
 
   it('keeps removed photo and spreadsheet endpoints unavailable and attaches security headers', async () => {
     const auth = await signIn();
-    const created = await (await call('/api/plants', 'POST', withAuth(auth, plant()))).json() as { id: number };
-    await env.DB.prepare('INSERT INTO plant_photos(plant_id,sort_order,image_data) VALUES(?,?,?)').bind(created.id, 1, new Uint8Array([1, 2, 3])).run();
     for (const [method, path] of [
-      ['GET', `/api/plants/${created.id}/photos`], ['POST', `/api/plants/${created.id}/photos`],
+      ['GET', '/api/plants/1/photos'], ['POST', '/api/plants/1/photos'],
       ['GET', '/api/photos/1/image'], ['DELETE', '/api/photos/1'],
       ['POST', '/api/imports/preview'], ['POST', '/api/imports/tsv'],
     ]) expect((await call(path, method, withAuth(auth, { content: 'sample' }))).status).toBe(404);
-    const photos = await env.DB.prepare('SELECT count(*) AS count FROM plant_photos').first<{ count: number }>();
-    expect(photos?.count).toBe(1);
+    const photos = await env.DB.prepare("SELECT count(*) AS count FROM sqlite_master WHERE type='table' AND name='plant_photos'").first<{ count: number }>();
+    expect(photos?.count).toBe(0);
     const read = await call('/api/plants', 'GET', withAuth(auth));
     expect(read.headers.get('cache-control')).toBe('no-store');
     expect(read.headers.get('x-frame-options')).toBe('DENY');

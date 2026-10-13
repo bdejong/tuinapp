@@ -151,6 +151,20 @@ button {
 .primary-btn { background: #386145; color: white; }
 .secondary-btn { background: #e0e0e0; }
 .delete-btn { background: #b83227; color: white; }
+@media (max-width: 700px) {
+  .modal-overlay { align-items: center; padding: 8px; }
+  .modal { width: 100%; max-width: 600px; max-height: calc(100dvh - 16px); padding: 16px; border-radius: 12px; overflow-y: auto; }
+  .form-group input, .form-group textarea { min-height: 44px; font-size: 16px; }
+  .form-group textarea { min-height: 80px; }
+  .button-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 1rem; }
+  .button-row button { min-height: 44px; padding: 8px 10px; }
+  .button-row .spacer { display: none; }
+  .period-grid { overflow-x: auto; padding-bottom: 4px; }
+  :deep(.period-grid .grid) { width: max-content; min-width: 100%; }
+  :deep(.period-grid .header-row), :deep(.period-grid .period-row) { grid-template-columns: 42px repeat(12, 40px); }
+  :deep(.period-grid .month-header) { padding: 5px 2px; }
+  :deep(.period-grid .cell) { min-height: 42px; }
+}
 </style>
 
 <style scoped>.validation-error {color:#a33229;margin:12px 0;font-size:13px;}.modal {box-shadow:0 18px 60px #0003;}input[aria-invalid="true"] {border-color:#a33229;}</style>

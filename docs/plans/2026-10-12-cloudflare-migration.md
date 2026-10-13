@@ -1,43 +1,11 @@
-# Cloudflare migration plan
+# Cloudflare application status
 
-Requested 12 October 2026. Implementation uses cheaper GPT-6 Luna agents; GPT-6 Astra reviews the completed migration. Existing uncommitted work is preserved (a local patch is saved in `.local/pre-cloudflare-changes.patch`). No account provisioning, DNS change or production deployment is performed before the owner supplies access.
+Last reviewed 13 October 2026.
 
-## Architecture
+TuinApp runs on Cloudflare Pages with a TypeScript API, D1 garden database, private R2 backups and a daily scheduled backup Worker. Printable calendars are generated in the browser. Settings lists downloadable application dumps; the website has no restore feature. Operators restore a downloaded dump with `scripts/cloudflare-restore.sh`, which validates the restricted dump format, verifies a fresh private R2 recovery export and uses Cloudflare's native D1 import with schema, generation and migration-ledger guards.
 
-- Vue/TypeScript frontend on Cloudflare Pages, with a TypeScript advanced-mode Pages Function for the existing same-origin API. Pages supports an externally managed subdomain, so authoritative DNS can stay at Gandi.
-- D1 SQLite for garden data, persisted authentication and change tracking. Separate databases per application and per preview environment.
-- Private R2 bucket for versioned logical SQL dumps. A scheduled TypeScript Worker shares the production D1 and R2 bindings and checks daily. Unchanged days produce no new dump; failed uploads remain eligible for retry.
-- Pure TypeScript PDF generation in the browser with the existing geometry, typography, symbols, wrapping and pagination. No Rust, headless browser or paid rendering service in the new runtime.
-- Settings lists successful dumps, allows downloads and accepts a validated dump to restore. Restore requires a successful recovery dump first and replaces data atomically. SQL uploads are parsed as a restricted data format, never executed as arbitrary SQL.
+Production Pages, D1, R2, the daily schedule, custom domain and GitHub deployment credentials are configured. The deployment workflow checks migration history, creates and verifies a private D1 recovery export, applies migrations and deploys the application. A remote restore rehearsal against a disposable D1 database verified preservation of IDs, revisions, ordering and sequences, session revocation, epoch/generation changes and rollback on late SQL failure.
 
-## Work sequence and ownership
+The owner has requested removal of photo features and data. The schema migration, dump compatibility and cleanup are in progress; do not treat that work as complete until the matching checks and production rollout finish. The original private database and local evidence remain outside version control and are not imported by routine deployments.
 
-1. Audit existing source/tests and current platform constraints; preserve original and golden data.
-2. Cheaper implementation agents work independently on API/auth, PDF renderer/tests, and data/backups/migrations/tests.
-3. Integrate Pages/scheduler configuration, local Cloudflare runtime, Settings restore flow and browser tests. Keep legacy sources as reference until parity is verified.
-4. Convert a read-only golden source to a separate D1-compatible SQL/SQLite copy; prove field, ID, timestamp, attachment, calendar and sequence preservation and unchanged source checksum.
-5. Run TypeScript checks, component tests, translated backend/data/PDF tests and existing browser workflows on the Cloudflare local runtime. Rehearse malformed restores, storage failures, stale edits and failed/repeated migrations.
-6. Expensive-model review of all new/changed source, tests, configuration and deployment scripts; fix findings and recheck affected behavior.
-7. Deliver account setup, deployment, backup/recovery and Gandi CNAME instructions, with measured results and remaining account-dependent checks.
-
-## Safety and acceptance
-
-Golden source: `/Users/bram/Documents/TuinApp-preserved-data/2026-10-12/db.golden.sqlite`, opened read-only. Expected SHA-256: `ad2e267df1ad06250204f3fd2a9a7f8c19bc5f531f4c7285c61f966bf3dd29a6`. Private converted outputs belong in ignored `data/cloudflare-golden/`; never CI or Git. No tests touch the current `data/tuinapp.sqlite` runtime database.
-
-Migrations are sequential, immutable, recorded and tested from prior versions. Failures must roll back; future/contradictory schemas must be rejected. No promise can cover arbitrary future changes: each new migration needs representative prior-data tests and a recovery point before production application.
-
-Free-tier suitability is a design target, not an unlimited-usage guarantee. Cloudflare quotas are shared by apps on an account; R2 usage beyond its allowance may incur charges. Actual production CPU usage, billing configuration, DNS/TLS and scheduled execution can only be verified after account access.
-
-## Official references
-
-- [Pages external custom subdomains](https://developers.cloudflare.com/pages/configuration/custom-domains/)
-- [Pages advanced mode](https://developers.cloudflare.com/pages/functions/advanced-mode/)
-- [Pages Function pricing](https://developers.cloudflare.com/pages/functions/pricing/)
-- [Workers limits](https://developers.cloudflare.com/workers/platform/limits/)
-- [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/)
-- [D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/)
-- [R2 pricing](https://developers.cloudflare.com/r2/pricing/)
-
-## Implementation status
-
-The TypeScript port, D1 golden copy, R2 daily backups/restore, versioned migrations and GitHub push-deployment workflow are prepared locally. GPT-6 Luna implemented the port; GPT-6 Astra reviewed all changed application and deployment code and the final review has no remaining findings. See [verification](../cloudflare-verification.md) for observed test results and [operations](../cloudflare-operations.md) for account setup, deployment and Gandi DNS. Production account, DNS/TLS, billing and CPU checks remain pending access. No changes have been pushed, merged or deployed.
+See [Cloudflare operations](../cloudflare-operations.md) for setup, deployment, backup, restore and local verification instructions. See the [verification record](../cloudflare-verification.md) for checks and remaining limitations.

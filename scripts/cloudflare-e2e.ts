@@ -2,12 +2,10 @@ import { Miniflare } from 'miniflare';
 import { build } from 'esbuild';
 import { createPasswordHash } from '../cloudflare/auth';
 import { scheduledBackup } from '../cloudflare/backups';
-import { parseDump, type Dataset, type TableName, TABLES } from '../cloudflare/dump';
 import type { Env } from '../cloudflare/types';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { extname, join, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
-import { spawnSync } from 'node:child_process';
 
 const port = Number(process.env.TUINAPP_E2E_PORT ?? 4173);
 const root = resolve(process.cwd());
@@ -51,20 +49,6 @@ const mf = new Miniflare({
 function statements(sql: string): string[] {
   return sql.split(/;\s*(?=(?:CREATE|UPDATE|INSERT|ALTER|DROP|DELETE)\b)/iu).map(part=>part.trim().replace(/;$/u,'')).filter(Boolean);
 }
-async function loadDataset(db: D1Database, dataset: Dataset) {
-  for (const table of Object.keys(TABLES) as TableName[]) {
-    const columns = TABLES[table];
-    const batches: D1PreparedStatement[][] = [];
-    for (let i=0;i<dataset[table].length;i+=40) {
-      batches.push(dataset[table].slice(i,i+40).map(row=>db.prepare(`INSERT INTO "${table}" (${columns.map(c=>`"${c}"`).join(',')}) VALUES (${columns.map(()=>'?').join(',')})`).bind(...columns.map(c=>row[c]))));
-    }
-    for (const batch of batches) if (batch.length) await db.batch(batch);
-  }
-  for (const row of dataset.sqlite_sequence) {
-    await db.prepare('DELETE FROM sqlite_sequence WHERE name=?').bind(row.name).run();
-    await db.prepare('INSERT INTO sqlite_sequence(name,seq) VALUES(?,?)').bind(row.name,row.seq).run();
-  }
-}
 async function main() {
   const env: Env = {
     DB: await mf.getD1Database('DB','tuinapp-e2e') as unknown as D1Database,
@@ -72,17 +56,9 @@ async function main() {
     TUINAPP_PASSWORD_HASH: passwordHash, TUINAPP_SESSION_SECRET: secret,
     TUINAPP_PUBLIC_ORIGIN:`http://127.0.0.1:${port}`,
   };
-  for (const file of ['0001_initial.sql','0002_data_generation.sql']) {
+  for (const file of ['0001_initial.sql','0002_data_generation.sql','0003_remove_plant_photos.sql']) {
     const sql = readFileSync(resolve(root,'cloudflare/migrations',file),'utf8');
     for (const statement of statements(sql)) await env.DB.prepare(statement).run();
-  }
-  const golden = process.env.TUINAPP_GOLDEN_DB;
-  if (golden) {
-    const output = join(scratch,'converted-golden');
-    const conversion = spawnSync(process.execPath,['node_modules/tsx/dist/cli.mjs','scripts/cloudflare-data.ts','convert-golden',resolve(golden),output],{cwd:root,encoding:'utf8'});
-    if (conversion.status !== 0) throw new Error(`Read-only golden conversion failed: ${conversion.stderr || conversion.stdout}`);
-    const dump = readFileSync(join(output,'tuinapp-golden.sql'),'utf8');
-    await loadDataset(env.DB,parseDump(dump).dataset);
   }
   await scheduledBackup(env);
   await mf.ready;

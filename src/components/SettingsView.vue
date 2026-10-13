@@ -1,19 +1,12 @@
 <script setup lang="ts">
 import { useSessionRestore } from '../composables/useSessionRestore';
 import { computed, ref, onMounted, onUnmounted } from 'vue';
-import { getBackupStatus, backupDownloadUrl, downloadBackup, restoreBackup, type BackupStatus, type BackupEntry } from '../api';
+import { getBackupStatus, backupDownloadUrl, downloadBackup, type BackupStatus, type BackupEntry } from '../api';
 const status = ref<BackupStatus | null>(null);
 const statusError = ref('');
 const statusLoading = ref(true);
 const downloading = ref<string | null>(null);
 const downloadError = ref<{ file: string; message: string } | null>(null);
-const restoreFile = ref<File | null>(null);
-const restoreConfirmed = ref(false);
-const restoring = ref(false);
-const restoreError = ref('');
-const restoreSuccess = ref(false);
-const fileInput = ref<HTMLInputElement | null>(null);
-const maxRestoreBytes = 5 * 1024 * 1024;
 const now = ref(Date.now());
 let active = true;
 let refreshing = false;
@@ -55,26 +48,6 @@ async function download(backup: BackupEntry) {
     if (active) downloadError.value = { file: backup.file, message: error instanceof Error ? error.message : 'Could not download this backup. Please try again.' };
   } finally { if (active) downloading.value = null; }
 }
-function chooseRestoreFile(event: Event) {
-  const input = event.target as HTMLInputElement;
-  restoreFile.value = input.files?.[0] ?? null;
-  restoreConfirmed.value = false;
-  restoreError.value = restoreFile.value && restoreFile.value.size > maxRestoreBytes ? 'SQL dump files must be no larger than 5 MiB.' : '';
-  restoreSuccess.value = false;
-}
-async function restore() {
-  if (!restoreFile.value || restoreFile.value.size > maxRestoreBytes || !restoreConfirmed.value || restoring.value) return;
-  restoring.value = true; restoreError.value = ''; restoreSuccess.value = false;
-  try {
-    await restoreBackup(restoreFile.value);
-    restoreSuccess.value = true;
-    restoreFile.value = null; restoreConfirmed.value = false;
-    if (fileInput.value) fileInput.value.value = '';
-    await refresh();
-  } catch (error) {
-    restoreError.value = error instanceof Error ? error.message : 'Could not restore this dump. Please try again.';
-  } finally { restoring.value = false; }
-}
 useSessionRestore(() => { void refresh(); });
 </script>
 <template>
@@ -90,7 +63,6 @@ useSessionRestore(() => { void refresh(); });
         <dl>
           <dt>Last checked</dt><dd>{{ formatDate(status.last_checked_at) }}<span v-if="status.checked_unchanged && !status.last_error" class="detail">No changes since the last backup</span></dd>
           <dt>Latest successful backup</dt><dd>{{ formatDate(status.latest?.created_at) }}</dd>
-          <dt>Last recovery check</dt><dd>{{ formatDate(status.last_restore_verified_at) }}</dd>
         </dl>
         <p v-if="status.last_error" class="error" role="alert">The last backup check failed: {{ status.last_error }}</p>
         <p v-if="overdue" class="error" role="alert">Backup checks are overdue. Please check the server.</p>
@@ -102,29 +74,36 @@ useSessionRestore(() => { void refresh(); });
             <caption class="visually-hidden">Saved garden backups, newest first</caption>
             <thead><tr><th scope="col">Saved</th><th scope="col">Contents</th><th scope="col">Size</th><th scope="col">Download</th></tr></thead>
             <tbody><tr v-for="backup in status.backups" :key="backup.file">
-              <td><time :datetime="backup.created_at">{{ formatDate(backup.created_at) }}</time><span class="detail">{{ backup.reason === 'scheduled' ? 'Automatic backup' : backup.reason === 'before-restore' ? 'Before a restore · kept for recovery' : backup.reason === 'before-migration' ? 'Before an update · kept for recovery' : backup.reason }}</span></td>
-              <td>{{ backup.plants }} plants · {{ backup.activities }} activities</td>
-              <td class="size">{{ formatSize(backup.bytes) }}</td>
-              <td><a :href="backupDownloadUrl(backup.file)" :aria-label="`Download backup from ${formatDate(backup.created_at)}`" :aria-disabled="downloading !== null || undefined" @click.prevent="download(backup)">{{ downloading === backup.file ? 'Downloading…' : 'Download SQL dump' }}</a><p v-if="downloadError?.file === backup.file" class="error download-error" role="alert">{{ downloadError.message }}</p></td>
+              <td data-label="Saved"><time :datetime="backup.created_at">{{ formatDate(backup.created_at) }}</time><span class="detail">{{ backup.reason === 'scheduled' ? 'Automatic backup' : backup.reason === 'before-restore' ? 'Safety copy' : backup.reason === 'before-migration' ? 'Before an update · safety copy' : backup.reason }}</span></td>
+              <td data-label="Contents">{{ backup.plants }} plants · {{ backup.activities }} activities</td>
+              <td class="size" data-label="Size">{{ formatSize(backup.bytes) }}</td>
+              <td data-label="Download"><a :href="backupDownloadUrl(backup.file)" :aria-label="`Download backup from ${formatDate(backup.created_at)}`" :aria-disabled="downloading !== null || undefined" @click.prevent="download(backup)">{{ downloading === backup.file ? 'Downloading…' : 'Download SQL dump' }}</a><p v-if="downloadError?.file === backup.file" class="error download-error" role="alert">{{ downloadError.message }}</p></td>
             </tr></tbody>
           </table>
         </div>
-        <p v-if="status.backups.length" class="hint">Each download is a SQL dump that can be restored from this page.</p>
+        <p v-if="status.backups.length" class="hint">Each download is a SQL dump for safekeeping.</p>
       </template>
-    </section>
-    <section aria-labelledby="restore-heading">
-      <h2 id="restore-heading">Restore from a SQL dump</h2>
-        <p id="restore-help">Choose a dump you downloaded earlier. Restoring replaces the current plants and activities. Maximum file size: 5 MiB.</p>
-      <label class="file-label" for="restore-dump">SQL dump file</label>
-      <input id="restore-dump" ref="fileInput" type="file" accept=".sql,application/sql,text/plain" :disabled="restoring" @change="chooseRestoreFile">
-      <p v-if="restoreFile" class="detail selected-file">Selected: {{ restoreFile.name }}</p>
-      <label class="confirm-label"><input v-model="restoreConfirmed" type="checkbox" :disabled="!restoreFile || restoring"> I understand this replaces my current garden.</label>
-      <button class="restore-button" :disabled="!restoreFile || restoreFile.size > maxRestoreBytes || !restoreConfirmed || restoring" @click="restore">{{ restoring ? 'Restoring…' : 'Restore garden' }}</button>
-      <p v-if="restoreError" class="error" role="alert">{{ restoreError }}</p>
-      <p v-if="restoreSuccess" class="success" role="status">Garden restored. The restored garden is now open.</p>
     </section>
   </div>
 </template>
 <style scoped>
-.settings-view {padding:24px;max-width:1180px;}h1 {font-size:24px;margin-bottom:8px;}.intro {color:#58664f;margin-bottom:24px;}section {background:white;padding:24px;border:1px solid #dce2d5;border-radius:8px;margin-bottom:20px;}h2 {font-size:18px;margin-bottom:14px;}h3 {font-size:16px;margin:24px 0 12px;}p {line-height:1.6;margin-bottom:14px;color:#526047;}dl {display:grid;grid-template-columns:230px 1fr;gap:12px;margin:20px 0;}dt {color:#58694e;}dd {margin:0;font-weight:600;}.detail {display:block;font-size:12px;font-weight:400;color:#526047;margin-top:4px;}button {font-size:13px;padding:8px 12px;border:0;border-radius:5px;background:#386145;color:white;cursor:pointer;}button:disabled {opacity:.55;cursor:not-allowed;}a {color:#285b38;text-decoration:underline;text-underline-offset:3px;white-space:nowrap;}a[aria-disabled=true] {cursor:wait;opacity:.6;}a:focus-visible,button:focus-visible,input:focus-visible {outline:3px solid #386145;outline-offset:4px;}.hint {font-size:12px;margin-top:16px;margin-bottom:0;}.storage-note {background:#f3f5ef;padding:12px;border-radius:4px;}.error {color:#a33229;}.success {color:#285b38;font-weight:600;}.table-wrap {overflow-x:auto;}table {width:100%;border-collapse:collapse;font-size:13px;}th {text-align:left;color:#4c5e42;font-weight:600;background:#f5f7f1;}th,td {padding:13px 12px;border-bottom:1px solid #e4e8df;vertical-align:top;}th:first-child,td:first-child {padding-left:8px;}td.size {white-space:nowrap;}.count {color:#5a6850;font-weight:400;}.download-error {max-width:240px;white-space:normal;margin:8px 0 0;}.file-label,.confirm-label {display:block;margin:16px 0 8px;color:#394833;}.confirm-label input {margin-right:8px;}.restore-button {display:block;margin-top:14px;}.selected-file {margin:8px 0;}.download-error {max-width:240px;white-space:normal;margin:8px 0 0;}.visually-hidden {position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+.settings-view {padding:24px;max-width:1180px;}h1 {font-size:24px;margin-bottom:8px;}.intro {color:#58664f;margin-bottom:24px;}section {background:white;padding:24px;border:1px solid #dce2d5;border-radius:8px;margin-bottom:20px;}h2 {font-size:18px;margin-bottom:14px;}h3 {font-size:16px;margin:24px 0 12px;}p {line-height:1.6;margin-bottom:14px;color:#526047;}dl {display:grid;grid-template-columns:230px 1fr;gap:12px;margin:20px 0;}dt {color:#58694e;}dd {margin:0;font-weight:600;}.detail {display:block;font-size:12px;font-weight:400;color:#526047;margin-top:4px;}button {font-size:13px;padding:8px 12px;border:0;border-radius:5px;background:#386145;color:white;cursor:pointer;}button:disabled {opacity:.55;cursor:not-allowed;}a {color:#285b38;text-decoration:underline;text-underline-offset:3px;white-space:nowrap;}a[aria-disabled=true] {cursor:wait;opacity:.6;}a:focus-visible,button:focus-visible,input:focus-visible {outline:3px solid #386145;outline-offset:4px;}.hint {font-size:12px;margin-top:16px;margin-bottom:0;}.storage-note {background:#f3f5ef;padding:12px;border-radius:4px;}.error {color:#a33229;}.table-wrap {overflow-x:auto;}table {width:100%;border-collapse:collapse;font-size:13px;}th {text-align:left;color:#4c5e42;font-weight:600;background:#f5f7f1;}th,td {padding:13px 12px;border-bottom:1px solid #e4e8df;vertical-align:top;}th:first-child,td:first-child {padding-left:8px;}td.size {white-space:nowrap;}.count {color:#5a6850;font-weight:400;}.download-error {max-width:240px;white-space:normal;margin:8px 0 0;}.visually-hidden {position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+@media (max-width: 700px) {
+  .settings-view { padding: 18px 12px; }
+  h1 { font-size: 22px; }
+  .intro { margin-bottom: 16px; }
+  section { padding: 16px 12px; }
+  dl { grid-template-columns: 1fr; gap: 4px; margin: 16px 0; }
+  dd { margin-bottom: 10px; }
+  .table-wrap { overflow: visible; }
+  table, tbody { display: block; width: 100%; }
+  thead { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  tbody tr { display: block; margin-bottom: 12px; padding: 8px 10px; border: 1px solid #e4e8df; border-radius: 7px; }
+  td, th, th:first-child, td:first-child { display: block; width: auto; padding: 6px 0; border-bottom: 0; white-space: normal; overflow-wrap: anywhere; }
+  td + td { border-top: 1px solid #eef0eb; }
+  td::before { content: attr(data-label) ' · '; color: #617052; font-size: 0.75rem; font-weight: 600; }
+  td:first-child::before { content: ''; }
+  a { display: inline-flex; align-items: center; min-height: 44px; white-space: normal; }
+  .download-error { max-width: none; }
+}
 </style>

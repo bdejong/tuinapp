@@ -38,7 +38,7 @@ export const login = async (password: string) => {
 function updateRestoreEpoch(epoch: number) {
   const changed = restoreEpoch !== null && restoreEpoch !== epoch;
   restoreEpoch = epoch;
-  if (changed) window.dispatchEvent(new CustomEvent('garden-restored'));
+  if (changed) window.dispatchEvent(new CustomEvent('garden-epoch-changed'));
 }
 export const checkSession = async () => {
   const session = await request<{csrf_token: string; restore_epoch: number}>('/session', 'GET', undefined, true);
@@ -69,37 +69,10 @@ export interface BackupStatus {
   last_checked_at: string | null;
   checked_unchanged: boolean;
   check_interval_seconds: number;
-  last_restore_verified_at: string | null;
   storage?: 'r2';
   failed_at?: string | null;
-  offsite?: { last_checked_at: string | null; last_success_at: string | null; last_restore_verified_at: string | null; last_error: string | null } | null;
+  offsite?: { last_checked_at: string | null; last_success_at: string | null; last_error: string | null } | null;
 }
 export const getBackupStatus = () => request<BackupStatus>('/backups/status');
 export const backupDownloadUrl = (filename: string) => `/api/backups/${encodeURIComponent(filename)}/download`;
 export const downloadBackup = (filename: string) => request<Blob>(`/backups/${encodeURIComponent(filename)}/download`, 'GET', undefined, false, true, false);
-export async function restoreBackup(file: File): Promise<void> {
-  try {
-    const response = await fetch('/api/backups/restore', {
-      method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/sql', 'X-Tuinapp-Request': '1', 'X-CSRF-Token': csrfToken, 'X-Tuinapp-Restore-Confirm': 'replace' },
-      body: file,
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      if (response.status === 401) window.dispatchEvent(new Event('session-expired'));
-      throw new ApiError(data.error || `Request failed (${response.status})`, response.status);
-    }
-    const result = await response.json() as { csrf_token?: string; restore_epoch?: number };
-    if (typeof result.csrf_token === 'string') csrfToken = result.csrf_token;
-    const epochChanged = typeof result.restore_epoch === 'number' && restoreEpoch !== null && result.restore_epoch !== restoreEpoch;
-    if (typeof result.restore_epoch === 'number') updateRestoreEpoch(result.restore_epoch);
-    // Restore success always advances the epoch. Keep this notification robust
-    // if a reverse proxy strips optional JSON fields in front of the app.
-    if (!epochChanged) window.dispatchEvent(new CustomEvent('garden-restored'));
-    window.dispatchEvent(new CustomEvent('api-error', { detail: '' }));
-  } catch (err) {
-    const error = err instanceof Error ? err : new Error('Connection failed. Please try again.');
-    if (!(error instanceof ApiError && error.status === 401)) window.dispatchEvent(new CustomEvent('api-error', { detail: error.message }));
-    throw error;
-  }
-}

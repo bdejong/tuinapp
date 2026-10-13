@@ -1,26 +1,29 @@
 # Cloudflare verification record
 
-Verified locally on 12 October 2026. Implementation was delegated to GPT-6 Luna; GPT-6 Astra reviewed the application, data safety, rendering and deployment code. Production account, DNS and billing checks await Cloudflare access. No remote database or DNS record has been changed.
+The TypeScript migration was built by GPT-6 Luna and reviewed by GPT-6 Astra. Production provisioning and remote verification took place on 13 October 2026. The final release also removes the website restore flow, photo storage, the one-time golden importer and the Rust runtime, and adds phone layouts.
 
-## Checks completed
+## Data and recovery
 
-- Production Vue build and strict frontend/Cloudflare TypeScript checks pass.
-- Backend, data, migration, PDF and release tests pass (59 cases; the private golden test is skipped in public CI); UI tests pass (129 cases).
-- Chromium and Firefox browser tests against a disposable empty D1/R2 environment: **68 passed, 2 golden-only tests skipped**.
-- Chromium and Firefox browser tests against a disposable golden-data D1/R2 environment: **70 passed**. This includes authenticated browser PDF generation, actual SQL download/upload restoration, malformed-upload nonmutation, and cross-tab stale-draft invalidation.
-- Optional private golden D1/R2 round-trip test passes separately. It compares every preserved field, sequence and all 24 half-month bits, then verifies a downloaded R2 dump. The original source remains read-only with SHA-256 `ad2e267df1ad06250204f3fd2a9a7f8c19bc5f531f4c7285c61f966bf3dd29a6`.
-- `verify-golden` confirms the separate ignored SQL/SQLite copy and manifest in `data/cloudflare-golden/`: 177 plants, 9 activities, 0 photos. Native Wrangler import into a disposable local D1 database also confirms 17 reorder flags.
-- Native Wrangler applies both migrations successfully; a second application reports no migrations to apply. Separate D1 tests prove failed batches roll back and existing fields survive upgrades.
-- Wrangler successfully builds the scheduled Worker in deployment dry-run mode. Workflow YAML parses, migration checksums match, and the release tests prove failed preflight/upload/read-back checks cannot reach migration or deployment.
-- PDF comparison across all 12 golden months, empty calendar and overflow: **14 fixtures, 25 pages**, with identical extracted text and pagination. Cloud symbols use the original cubic curves. Raster differences remain (at most 2,557 pixels per 150dpi page), so output is not described as pixel-identical. Private comparison report and April reference images are saved under ignored `.local/cloudflare-pdf-typescript/`.
-- Git whitespace/diff validation passes.
+- The original read-only golden source remains unchanged. Its SHA-256 is `ad2e267df1ad06250204f3fd2a9a7f8c19bc5f531f4c7285c61f966bf3dd29a6`. Before cutover, conversion compared every preserved field and sequence. The imported garden had 177 plants, 9 activities and 17 reorder flags.
+- Production native D1 exports were uploaded to private R2 and downloaded again for SHA-256 comparison before deployment. Application SQL downloads have separate integrity framing and R2 read-back checks.
+- A deliberate late failure in a native file import on a disposable **remote** D1 database left all original rows, sessions, generation, restore epoch and sequences unchanged.
+- The operator restore shell utility was exercised against that disposable remote database. It created a verified native R2 recovery export, restored long Unicode notes with embedded NUL, a 110,000-byte binary fixture, IDs, revisions, timestamps, reorder flags and sequences exactly, and revoked stale sessions. This verified the schema-2 utility before photo support was removed; final schema-3 compatibility is covered by the current automated tests.
+- The disposable remote database and its synthetic R2 recovery object were deleted after validation. Production data was not used for deliberate failure tests.
+- One-time golden conversion tooling is removed after successful cutover. Existing private source copies and recovery exports are retained.
 
-## Review-driven corrections
+## Application and deployment
 
-The expensive-model review found and prompted corrections for production-only PBKDF2 limits, real D1 BLOB return types, truncated-dump acceptance, stale drafts after restore, the Pages CLI configuration rule, D1 binding-size/query limits, missing/corrupt R2 backup repair, Unicode name validation, fixture sequence handling and PDF cloud curves. Tests cover these regressions, plus login throttle boundaries, overlapping scheduled backup runs and retention of 90 scheduled points without deleting protected recovery points. The final GPT-6 Astra review closed with no remaining code findings. Expensive password derivation and PDF generation now run in the browser; the Worker supplies authenticated data and verifies the password proof.
+- Production HTTPS at `https://tuin.familiedejong.be/health` returns success. Gandi retains authoritative DNS, with `tuin CNAME tuinapp.pages.dev.`. Pages, D1, private R2 and the scheduled Worker are provisioned.
+- The exact restricted token stored in GitHub's production environment successfully deployed Pages and the scheduled Worker, applied the existing migration ledger, and verified R2 export read-back.
+- Measured live HTTP CPU: login parameters 2 ms, login 7 ms, plants 5 ms, activities 2 ms, PDF data 5 ms and backup status 3 ms. PDFs are generated in the browser. Restoration now runs only through the operator shell utility.
+- Backend tests cover database/API behavior, backup integrity and retention, migration failure/retry, canonical restore generation and release safety. UI and browser tests cover normal garden workflows and removal of website restore controls. Mobile browser tests exercise narrow layouts, navigation, editing, calendar and backup downloads.
+- Native release export logs suppress signed database download URLs, including on subprocess failure. A regression checks both output streams. Private data, credentials, exports and diagnostic logs are ignored by Git and never uploaded as CI artifacts.
+- Existing migration files are immutable: CI verifies history and checksums before deployment. A verified native R2 export is required before pending migrations or application deployment. Failure prevents subsequent deployment steps; future migrations still require representative upgrade tests.
 
-Native release exports in `releases/` and application recovery dumps in `backups/` are distinct formats with separate recovery instructions. Golden/private artifacts and local test logs are ignored by Git.
+## PDF comparison
 
-## Production acceptance still required
+All 12 original garden months, an empty calendar and an overflow fixture were compared: **14 fixtures, 25 pages**, with matching extracted text and pagination. Cloud symbols use the original cubic curves. Raster differences remain (at most 2,557 pixels per 150dpi page), so output is not described as pixel-identical. Private comparison reports are retained under ignored `.local/cloudflare-pdf-typescript/`. The retired Rust reference remains available in Git history.
 
-After account provisioning: validate token scopes, actual D1/R2 bindings, Pages deployment, Gandi CNAME/TLS, scheduled execution, R2 read-back and a real restore drill. Measure free-plan Worker CPU and usage limits on production hardware. Local emulation does not reproduce every production quota; no cost or uptime guarantee is inferred from local test success.
+## Final acceptance tracking
+
+Final schema-3/mobile test totals, expensive-model review, merged GitHub deployment and scheduled backup CPU verification are recorded here once complete. Local emulation does not reproduce all production quotas; no cost or uptime guarantee is inferred from local test success.

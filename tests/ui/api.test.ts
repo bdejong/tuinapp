@@ -1,5 +1,5 @@
 import { it, expect, vi, afterEach } from 'vitest';
-import { login, checkSession, getAllPlants, createPlant, deletePlant, logout, getMonthPdf, restoreBackup } from '../../src/api';
+import { login, checkSession, getAllPlants, createPlant, deletePlant, logout, getMonthPdf } from '../../src/api';
 afterEach(()=>vi.unstubAllGlobals());
 it('adds the session CSRF token to writes and keeps credentials same-origin',async()=>{
   const salt=btoa(String.fromCharCode(...new Uint8Array(16)));
@@ -60,11 +60,6 @@ it('backup downloads use the selected filename and report failure inline',async(
   } finally {window.removeEventListener('api-error',event);}
 });
 
-it('uploads a selected SQL dump with CSRF and explicit replacement confirmation',async()=>{
-  const fetch=vi.fn().mockResolvedValue(new Response(JSON.stringify({ok:true}),{status:200}));vi.stubGlobal('fetch',fetch);
-  const file=new File(['INSERT INTO plants(name) VALUES (\'Basil\');'],'garden.sql',{type:'application/sql'});
-  await restoreBackup(file);const [url,options]=fetch.mock.calls[0];
-  expect(url).toBe('/api/backups/restore');expect(options.method).toBe('POST');expect(options.credentials).toBe('same-origin');
-  expect(options.headers['Content-Type']).toBe('application/sql');expect(options.headers['X-Tuinapp-Request']).toBe('1');
-  expect(options.headers['X-Tuinapp-Restore-Confirm']).toBe('replace');expect(options.body).toBe(file);
+it('does not expose a browser backup restore client operation',async()=>{
+  const api=await import('../../src/api');expect('restoreBackup' in api).toBe(false);
 });
