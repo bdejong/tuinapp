@@ -1,0 +1,14 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "tuinapp-backups",
+  "main": "scheduler.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  "triggers": { "crons": ["15 2 * * *"] },
+  "d1_databases": [{
+    "binding": "DB", "database_name": "tuinapp",
+    "database_id": "610e681f-4f5f-45f2-983b-aa11002d294d",
+    "migrations_dir": "migrations"
+  }],
+  "r2_buckets": [{ "binding": "BACKUPS", "bucket_name": "tuinapp-backups" }]
+}

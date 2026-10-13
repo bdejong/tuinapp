@@ -159,13 +159,16 @@ test('sun symbols match the colored screen assets and plant forms have no photo 
   await expect(page.locator('.settings-view')).not.toContainText(/photo|camera/i);
 });
 
-test('Settings offers backups without spreadsheet import', async ({ page }) => {
+test('Settings lists automatic R2 backups and offers downloads only', async ({ page }) => {
   await page.getByRole('navigation').getByRole('button',{name:'Settings',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Settings & backups'})).toBeVisible();
   await expect(page.locator('.settings-view')).not.toContainText(/spreadsheet|import|TSV/i);
   await expect(page.locator('input[type=file]')).toHaveCount(0);
-  await page.getByRole('button',{name:'Back up now',exact:true}).click();
-  await expect(page.getByRole('status')).toContainText('Backup created and verified.');
+  await expect(page.getByRole('heading',{name:/Restore/i})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:/Restore/i})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:/Back up now|Test recovery/})).toHaveCount(0);
+  await expect(page.getByRole('link',{name:/Download backup from/}).first()).toBeVisible();
+  await expect(page.getByText('Changes are checked daily.',{exact:false})).toBeVisible();
 });
 
 test('backup status failure is explicit and retry recovers', async ({ page }) => {
@@ -205,14 +208,24 @@ for (const size of [{width:1280,height:800},{width:1920,height:1080}]) {
 
 test('failed backup download keeps Settings open and allows retry', async ({page})=>{
   await page.getByRole('navigation').getByRole('button',{name:'Settings',exact:true}).click();
-  await page.route('**/api/backups/download',r=>r.fulfill({status:503,json:{error:'Backup storage unavailable'}}));
-  await page.getByRole('button',{name:'Download backup'}).click();
+  await page.route('**/api/backups/*/download',r=>r.fulfill({status:503,json:{error:'Backup storage unavailable'}}));
+  await page.getByRole('link',{name:/Download backup from/}).first().click();
   await expect(page.getByRole('alert')).toContainText('Backup storage unavailable');
   await expect(page.getByRole('heading',{name:'Settings & backups'})).toBeVisible();
-  await page.unroute('**/api/backups/download');
-  const pending=page.waitForEvent('download'); await page.getByRole('button',{name:'Download backup'}).click();
-  expect((await pending).suggestedFilename()).toBe('tuinapp-backup.zip');
+  await page.unroute('**/api/backups/*/download');
+  const pending=page.waitForEvent('download'); await page.getByRole('link',{name:/Download backup from/}).first().click();
+  expect((await pending).suggestedFilename()).toMatch(/^tuinapp-.*\.sql$/);
   await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('backup downloads stay accessible without upload or replacement controls',async ({page})=>{
+  await page.getByRole('navigation').getByRole('button',{name:'Settings',exact:true}).click();
+  await expect(page.locator('input[type=file]')).toHaveCount(0);
+  await expect(page.locator('input[type=checkbox]')).toHaveCount(0);
+  await expect(page.getByRole('link',{name:/Download backup from/}).first()).toBeVisible();
+  const download=page.waitForEvent('download');
+  await page.getByRole('link',{name:/Download backup from/}).first().click();
+  expect((await download).suggestedFilename()).toMatch(/^tuinapp-.*\.sql$/);
 });
 
 test('sign out hides private data and signing back in reopens the garden', async ({page})=>{

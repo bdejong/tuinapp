@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { readFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
@@ -9,7 +8,7 @@ test.beforeEach(async ({ page }) => {
   await page.getByRole('navigation').getByRole('button', { name: 'Calendar', exact: true }).click();
 });
 
-test('downloads the original-style PDF for each selected month', async ({ page }, info) => {
+test('downloads the original-style PDF for each selected month', async ({ page }) => {
   for (const [month, name] of [[4, 'april'], [10, 'october']] as const) {
     await page.getByLabel('Calendar month').selectOption(String(month));
     await expect(page.getByRole('button', { name: 'Printable PDF', exact: true })).toBeEnabled();
@@ -20,10 +19,6 @@ test('downloads the original-style PDF for each selected month', async ({ page }
     expect(readFileSync((await download.path())!).subarray(0, 5).toString()).toBe('%PDF-');
     await expect(page.getByRole('button', { name: 'Printable PDF', exact: true })).toBeEnabled();
     await expect(page.getByLabel('Calendar month')).toHaveValue(String(month));
-    if (process.env.TUINAPP_GOLDEN_DB && process.env.TUINAPP_PDF_OUTPUT && info.project.name === 'chromium') {
-      mkdirSync(process.env.TUINAPP_PDF_OUTPUT, { recursive: true });
-      await download.saveAs(join(process.env.TUINAPP_PDF_OUTPUT, `web-${name}.pdf`));
-    }
   }
 });
 
@@ -32,7 +27,7 @@ test('a slow or failed PDF preserves the calendar and supports retry', async ({ 
   await expect(page.getByRole('button', { name: 'Printable PDF', exact: true })).toBeEnabled();
   let fail!: () => void;
   const gate = new Promise<void>(resolve => { fail = resolve; });
-  await page.route('**/api/months/10/pdf', async route => {
+  await page.route('**/api/months/10/pdf-data', async route => {
     await gate;
     await route.fulfill({ status: 503, json: { error: 'PDF temporarily unavailable' } });
   });
@@ -43,7 +38,7 @@ test('a slow or failed PDF preserves the calendar and supports retry', async ({ 
   fail();
   await expect(page.locator('.monthly-view [role=alert]')).toContainText('PDF temporarily unavailable');
   await expect(page.getByRole('heading', { name: 'October in the garden' })).toBeVisible();
-  await page.unroute('**/api/months/10/pdf');
+  await page.unroute('**/api/months/10/pdf-data');
   const pendingDownload = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Retry PDF', exact: true }).click();
   expect((await pendingDownload).suggestedFilename()).toBe('garden-planner-october.pdf');

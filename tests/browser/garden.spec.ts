@@ -1,30 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-const source = process.env.TUINAPP_GOLDEN_DB;
-const hash = () => source ? createHash('sha256').update(readFileSync(source)).digest('hex') : '';
-let originalHash = '';
-test.beforeAll(() => { originalHash = hash(); });
-test.afterAll(() => { expect(hash()).toBe(originalHash); });
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await page.getByLabel('Password', { exact: true }).fill('tuinapp-browser-test-only-password');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Plants' })).toBeVisible();
-});
-
-test('golden records load without photo features', async ({ page }) => {
-  test.skip(!source, 'Run with TUINAPP_GOLDEN_DB to test private data');
-  const photoRequests: string[] = [];
-  page.on('request', request => { if (/\/api\/plants\/\d+\/photos/.test(request.url())) photoRequests.push(request.url()); });
-  await page.reload();
-  await expect(page.locator('.plant-list tbody tr')).toHaveCount(177);
-  expect(photoRequests).toHaveLength(0);
-  await expect(page.getByRole('columnheader',{name:'Photo',exact:true})).toHaveCount(0);
-  await page.getByText('To Order', { exact: true }).click();
-  await expect(page.locator('.to-order-view tbody tr')).toHaveCount(17);
-  await page.getByText('Activities', { exact: true }).first().click();
-  await expect(page.locator('.activity-list tbody tr')).toHaveCount(9);
 });
 
 test('desktop create, save another, overview edit and delete', async ({ page }) => {
@@ -72,7 +52,7 @@ test('stale edit keeps local form contents and shows a useful error', async ({ p
   await second.close();
 });
 
-test('calendar renders all categories and prints, backups restore and download', async ({ page }) => {
+test('calendar prints all categories and saved backups download', async ({ page }) => {
   await page.getByRole('button', { name: '+ Add Plant', exact: true }).first().click();
   await page.getByRole('dialog').getByLabel('Name', { exact: true }).fill('Uncategorized calendar plant');
   await page.getByRole('button', { name: 'Sowing Periods: early January', exact: true }).click();
@@ -88,12 +68,25 @@ test('calendar renders all categories and prints, backups restore and download',
   expect(readFileSync((await pdfDownload.path())!).subarray(0,5).toString()).toBe('%PDF-');
   await expect(page.getByRole('heading', { name: 'January in the garden' })).toBeVisible();
   await page.getByText('Settings', { exact: true }).click();
-  await page.getByRole('button', { name: 'Test recovery' }).click();
-  await expect(page.getByRole('status')).toContainText('restored into a temporary database');
+  await expect(page.getByText('Changes are checked daily.', { exact: false })).toBeVisible();
   const downloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Download backup' }).click();
-  const download = await downloadPromise; expect(download.suggestedFilename()).toBe('tuinapp-backup.zip');
+  await page.getByRole('link', { name: /Download backup from/ }).first().click();
+  const download = await downloadPromise; expect(download.suggestedFilename()).toMatch(/^tuinapp-.*\.sql$/);
   await page.getByText('Plants', { exact: true }).first().click();
   await page.getByRole('cell', { name: 'Uncategorized calendar plant', exact: true }).click();
   await page.getByRole('button', { name: 'Delete', exact: true }).click();await page.getByRole('button', { name: 'Yes, Delete' }).click();
+});
+
+test('keeps SQL backups downloadable without exposing a browser restore workflow', async ({ page }) => {
+  await page.getByText('Settings', { exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Settings & backups' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Restore from a SQL dump' })).toHaveCount(0);
+  await expect(page.locator('input[type=file]')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Restore garden' })).toHaveCount(0);
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('link', { name: /Download backup from/ }).first().click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^tuinapp-.*\.sql$/);
+  const dump = readFileSync((await download.path())!);
+  expect(dump.toString()).toContain('tuinapp-backup-v1');
 });

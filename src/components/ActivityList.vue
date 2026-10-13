@@ -75,9 +75,9 @@ defineExpose({ openAddForm });
       </thead>
       <tbody>
         <tr v-for="activity in activities" :key="activity.id" @click="openEditForm(activity)">
-          <td><button class="row-name" @click.stop="openEditForm(activity)">{{ activity.name }}</button></td>
-          <td class="activity-months">{{ activityMonths(activity.active_periods) }}</td>
-          <td>{{ activity.description || '-' }}</td>
+          <td data-label="Name"><button class="row-name" @click.stop="openEditForm(activity)">{{ activity.name }}</button></td>
+          <td class="activity-months" data-label="Months">{{ activityMonths(activity.active_periods) }}</td>
+          <td data-label="Description">{{ activity.description || '-' }}</td>
         </tr>
       </tbody>
     </table>
@@ -108,6 +108,20 @@ th { background: #f5f5f5; }
 tbody tr { cursor: pointer; }
 tbody tr:hover { background: #f9f9f9; }
 .empty { color: #666; text-align: center; padding: 2rem; }
+@media (max-width: 700px) {
+  .activity-list { padding: 16px 12px; }
+  .header { gap: 8px; align-items: flex-start; }
+  .header h1 { font-size: 1.25rem; }
+  .add-btn { min-height: 44px; padding: 8px 10px; white-space: nowrap; }
+  table, tbody { display: block; width: 100%; }
+  thead { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  tbody tr { display: block; margin: 0 0 12px; padding: 8px 12px; background: white; border: 1px solid #e1e6dc; border-radius: 8px; }
+  th, td { display: block; width: auto; min-width: 0; padding: 6px 0; border-bottom: 0; overflow-wrap: anywhere; }
+  td + td { border-top: 1px solid #eef0eb; }
+  td::before { content: attr(data-label) ' · '; color: #617052; font-size: 0.75rem; font-weight: 600; }
+  td:first-child::before { content: ''; }
+  .activity-months { line-height: 1.45; }
+}
 </style>
 
 <style scoped>.row-name {border:0;background:transparent;text-align:left;padding:0;color:inherit;cursor:pointer;}.load-error {margin:24px 0;padding:16px;border:1px solid #e6c3b8;background:#fff6f1;}.load-error button {margin-top:10px;padding:7px 12px;}.record-count {font-weight:400;color:#617052;font-size:13px;margin-left:8px;}</style>

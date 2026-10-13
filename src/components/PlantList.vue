@@ -209,6 +209,15 @@ tbody tr:hover {
 }
 
 .sun-icons {display:inline-flex;align-items:center;gap:3px;}
+@media (max-width: 700px) {
+  .plant-list { padding: 16px 12px; }
+  .header { gap: 8px; }
+  .header h1 { font-size: 1.25rem; }
+  .add-btn { min-height: 44px; padding: 8px 10px; white-space: nowrap; }
+  .search-input { max-width: none; min-height: 44px; font-size: 16px; }
+  th, td { padding: 8px 6px; }
+  .row-name { display: flex; align-items: center; width: 100%; min-height: 44px; overflow-wrap: anywhere; }
+}
 </style>
 
 <style scoped>.row-name {border:0;background:transparent;text-align:left;padding:0;color:inherit;cursor:pointer;}.load-error {margin:24px 0;padding:16px;border:1px solid #e6c3b8;background:#fff6f1;}.load-error button {margin-top:10px;padding:7px 12px;}.record-count {font-weight:400;color:#617052;font-size:13px;margin-left:8px;}</style>

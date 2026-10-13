@@ -21,4 +21,5 @@ async function submit() {
 </template>
 <style scoped>
 .login-screen {min-height:100vh;display:grid;place-items:center;background:#f2f4ee;}.login-card {width:430px;padding:42px;background:white;border:1px solid #dce2d5;border-radius:12px;box-shadow:0 14px 40px #263c2210;}.eyebrow {color:#547147;letter-spacing:.12em;font-size:10px;font-weight:700;}h1 {font-size:36px;margin:12px 0;color:#2b4028;}p {color:#697263;line-height:1.6;margin-bottom:24px;}label {display:block;margin-bottom:8px;font-weight:600;}input {width:100%;padding:12px;border:1px solid #c8d0c1;border-radius:5px;margin-bottom:18px;}button {width:100%;background:#386145;color:white;padding:12px;border:0;border-radius:5px;font-weight:600;cursor:pointer;}.error {color:#9e3028;}
+@media (max-width: 480px) { .login-screen { min-height:100dvh; padding:16px; } .login-card { width:100%; max-width:430px; padding:28px 22px; } h1 { font-size:30px; } }
 </style>

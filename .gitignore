@@ -39,9 +39,6 @@ backups/
 test-results/
 playwright-report/
 
-# Keep dependency versions reproducible even if a global ignore excludes lockfiles
-!Cargo.lock
-
 # Private reference-data print comparisons
 /output/pdf/
 /tmp/pdfs/
@@ -49,5 +46,17 @@ playwright-report/
 # Machine-specific assistant settings
 .claude/
 
-# Disposable build reports and container image exports
-*.docker.tar
+# Disposable build reports
+
+# Residual local artifacts from the removed PDF experiment
+experiments/cloudflare-pdf/pkg/
+experiments/cloudflare-pdf/vendor/
+
+# Cloudflare local data, generated bundles and secrets
+.wrangler/
+.dev.vars
+.dev.vars.*
+cloudflare/.dev.vars*
+cloudflare-build/
+wrangler.deploy.json
+cloudflare/wrangler.scheduler.deploy.json

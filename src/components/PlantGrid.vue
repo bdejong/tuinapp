@@ -226,4 +226,19 @@ thead tr th:first-child {left:0;z-index:3;}.plant-name {z-index:1;white-space:no
 .period-cell {font-size:9px;color:#193120;padding:2px;}
 .current-period {box-shadow:inset 2px 0 #71826a,inset -2px 0 #71826a,inset 0 0 0 100px #29482d1f;}
 thead tr:nth-child(2) th.current-period {background:#dce5d6;color:#293f2c;font-weight:700;}
+@media (max-width: 700px) {
+  .plant-grid { padding: 16px 12px; min-width: 0; }
+  .overview-header { display: block; }
+  .overview-header h1 { font-size: 22px; }
+  .overview-options { flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .overview-options select { min-height: 44px; max-width: 100%; }
+  .legend { flex-wrap: wrap; gap: 8px 12px; margin-top: 12px; }
+  .legend-item { white-space: nowrap; }
+  .grid-hint { line-height: 1.45; }
+  .grid-container { max-height: calc(100dvh - 285px); }
+  .plant-name { width: 120px; min-width: 120px; max-width: 120px; white-space: normal; overflow-wrap: anywhere; }
+  .plant-name-header { width: 120px; min-width: 120px; max-width: 120px; }
+  .grid-container table { table-layout: fixed; }
+  .plant-name .row-name { display: block; width: 100%; white-space: normal; overflow-wrap: anywhere; }
+}
 </style>
