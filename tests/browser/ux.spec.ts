@@ -123,9 +123,10 @@ test('activity quick add, save another reset, calendar periods and edit', async 
   await expect(page.getByRole('dialog').getByLabel('Name',{exact:true})).toHaveValue('');
   await expect(page.getByRole('dialog').getByLabel('Description',{exact:true})).toHaveValue('');
   await page.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
-  const activityRow=page.locator('.activity-list tbody tr').filter({has:page.getByRole('button',{name:prefix+'mulch',exact:true})});
-  await expect(activityRow.locator('.activity-months')).toHaveText('December');
-  await page.getByRole('button',{name:prefix+'mulch',exact:true}).click();
+  const december=page.locator('.month-section[data-month-index="11"]');
+  const activityRow=december.locator('tbody tr').filter({hasText:prefix+'mulch'});
+  await expect(activityRow).toHaveCount(1);
+  await december.getByRole('button',{name:prefix+'mulch',exact:true}).click();
   await expect(page.getByRole('dialog').getByLabel('Description',{exact:true})).toHaveValue('Use leaf mould');
   await page.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
   await page.getByRole('navigation').getByRole('button',{name:'Calendar',exact:true}).click();

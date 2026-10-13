@@ -140,3 +140,49 @@ for (const width of widths) {
     await expect(page.getByLabel('Password', { exact: true })).toBeVisible();
   });
 }
+
+test('mobile activity month sections repeat an activity once per active month and keep editing usable', async ({ page }) => {
+  const width = 320;
+  const activityName = `${prefix}month sections`;
+  await page.setViewportSize({ width, height: 780 });
+  await page.goto('/');
+  await signIn(page);
+  const navigation = page.getByRole('navigation');
+  await navigation.getByRole('button', { name: 'Activities', exact: true }).click();
+  await page.getByRole('button', { name: '+ Add Activity', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Name', { exact: true }).fill(activityName);
+  await dialog.getByLabel('Description', { exact: true }).fill('In both garden seasons');
+  await dialog.getByRole('button', { name: 'Active Periods: early October', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Active Periods: late December', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Save & Close', exact: true }).click();
+
+  const october = page.locator('.month-section[data-month-index="9"]');
+  const december = page.locator('.month-section[data-month-index="11"]');
+  const octoberRow = october.locator('tbody tr').filter({ hasText: activityName });
+  const decemberRow = december.locator('tbody tr').filter({ hasText: activityName });
+  await expect(octoberRow).toHaveCount(1);
+  await expect(decemberRow).toHaveCount(1);
+  for (const row of [octoberRow, decemberRow]) {
+    const nameButton = row.getByRole('button', { name: activityName, exact: true });
+    expect((await nameButton.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    await expect(row.getByText('In both garden seasons', { exact: true })).toBeVisible();
+  }
+  await expectNoPageOverflow(page, width);
+
+  await december.getByRole('button', { name: activityName, exact: true }).click();
+  await page.getByRole('dialog').getByLabel('Description', { exact: true }).fill('Edited from December');
+  await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(octoberRow.getByText('Edited from December', { exact: true })).toBeVisible();
+  await expect(decemberRow.getByText('Edited from December', { exact: true })).toBeVisible();
+  await expectNoPageOverflow(page, width);
+
+  const session = await page.request.get('/api/session');
+  if (session.ok()) {
+    const { csrf_token } = await session.json();
+    const activities = await (await page.request.get('/api/activities')).json();
+    for (const activity of activities.filter((row: { name: string }) => row.name === activityName)) {
+      await page.request.delete(`/api/activities/${activity.id}`, { headers: { 'X-Tuinapp-Request': '1', 'X-CSRF-Token': csrf_token }, data: { revision: activity.revision } });
+    }
+  }
+});

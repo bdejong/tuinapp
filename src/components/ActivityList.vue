@@ -1,15 +1,22 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { computed, ref, onMounted, onUnmounted } from 'vue';
 import { useLoadState } from '../composables/useLoadState';
 import { MONTHS, type Activity } from '../types';
 import { getAllActivities, createActivity, updateActivity, deleteActivity } from '../api';
 import ActivityForm from './ActivityForm.vue';
 
 const activities = ref<Activity[]>([]);
-const activityMonths = (periods: number) => {
-  const months = MONTHS.filter((_, index) => (periods & (3 << (index * 2))) !== 0);
-  return months.length === 12 ? 'Every month' : months.join(', ') || 'Not scheduled';
-};
+const currentMonth = ref(new Date().getMonth());
+const monthGroups = computed(() => Array.from({ length: 12 }, (_, offset) => {
+  const index = (currentMonth.value + offset) % 12;
+  const mask = 3 << (index * 2);
+  return {
+    index,
+    name: MONTHS[index],
+    activities: activities.value.filter(activity => (activity.active_periods & mask) !== 0),
+  };
+}));
+const unscheduledActivities = computed(() => activities.value.filter(activity => activity.active_periods === 0));
 const showForm = ref(false);
 const formKey = ref(0);
 const saving = ref(false);
@@ -18,7 +25,29 @@ const editingActivity = ref<Activity | undefined>();
 const { loading, loadError, load } = useLoadState();
 const loadActivities = () => load(async () => { activities.value = await getAllActivities(); });
 
-onMounted(() => loadActivities().catch(() => {}));
+let monthTimer: ReturnType<typeof setTimeout>;
+function refreshCurrentMonth() {
+  clearTimeout(monthTimer);
+  const now = new Date();
+  currentMonth.value = now.getMonth();
+  const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  monthTimer = setTimeout(refreshCurrentMonth, Math.max(1, nextMidnight.getTime() - now.getTime()));
+}
+function refreshWhenVisible() {
+  if (document.visibilityState === 'visible') refreshCurrentMonth();
+}
+
+onMounted(() => {
+  refreshCurrentMonth();
+  document.addEventListener('visibilitychange', refreshWhenVisible);
+  window.addEventListener('focus', refreshCurrentMonth);
+  loadActivities().catch(() => {});
+});
+onUnmounted(() => {
+  clearTimeout(monthTimer);
+  document.removeEventListener('visibilitychange', refreshWhenVisible);
+  window.removeEventListener('focus', refreshCurrentMonth);
+});
 
 const openAddForm = () => {
   if (showForm.value) return;
@@ -65,24 +94,40 @@ defineExpose({ openAddForm });
 
     <p v-if="loading" role="status" class="empty">Loading activities…</p>
     <div v-else-if="loadError" class="load-error" role="alert"><p>{{ loadError }}</p><button @click="loadActivities">Try again</button></div>
-    <table v-else-if="activities.length > 0">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th class="months-column">Months</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="activity in activities" :key="activity.id" @click="openEditForm(activity)">
-          <td data-label="Name"><button class="row-name" @click.stop="openEditForm(activity)">{{ activity.name }}</button></td>
-          <td class="activity-months" data-label="Months">{{ activityMonths(activity.active_periods) }}</td>
-          <td data-label="Description">{{ activity.description || '-' }}</td>
-        </tr>
-      </tbody>
-    </table>
+    <p v-else-if="activities.length === 0" class="empty">No activities yet. Add your first activity!</p>
 
-    <p v-else class="empty">No activities yet. Add your first activity!</p>
+    <template v-else>
+      <section v-for="group in monthGroups" :key="group.index" class="month-section" :data-month-index="group.index">
+        <h2 :class="{ 'current-month': group.index === currentMonth }">
+          {{ group.name }}
+          <span v-if="group.index === currentMonth" class="current-badge" aria-current="date">Current month</span>
+        </h2>
+        <table v-if="group.activities.length > 0">
+          <thead><tr><th>Activity</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr v-for="activity in group.activities" :key="activity.id" @click="openEditForm(activity)">
+              <td data-label="Activity"><button class="row-name" @click.stop="openEditForm(activity)">{{ activity.name }}</button></td>
+              <td data-label="Description">{{ activity.description || '-' }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-else class="month-empty">No activities scheduled.</p>
+      </section>
+
+      <section v-if="unscheduledActivities.length > 0" class="month-section unscheduled-section" data-unscheduled>
+        <h2>Unscheduled</h2>
+        <p class="section-description">These activities have no active periods yet.</p>
+        <table>
+          <thead><tr><th>Activity</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr v-for="activity in unscheduledActivities" :key="activity.id" @click="openEditForm(activity)">
+              <td data-label="Activity"><button class="row-name" @click.stop="openEditForm(activity)">{{ activity.name }}</button></td>
+              <td data-label="Description">{{ activity.description || '-' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </template>
 
     <ActivityForm
       :key="formKey"
@@ -101,10 +146,14 @@ defineExpose({ openAddForm });
 .activity-list { padding: 1rem; }
 .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
 .add-btn { background: #386145; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
+.month-section { margin: 0 0 1.5rem; }
+.month-section h2 { display: flex; align-items: center; gap: 0.6rem; margin: 1.25rem 0 0.5rem; padding-bottom: 0.4rem; border-bottom: 1px solid #e1e6dc; font-size: 1.15rem; }
+.month-section h2.current-month { color: #245a36; border-bottom: 2px solid #386145; }
+.current-badge { padding: 0.2rem 0.55rem; border-radius: 999px; background: #e5f1e7; color: #245a36; font-size: 0.72rem; font-weight: 650; }
+.month-empty, .section-description { margin: 0.45rem 0 0.75rem; color: #687267; font-size: 0.9rem; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid #eee; }
 th { background: #f5f5f5; }
-.months-column {width:30%;min-width:200px;}.activity-months {line-height:1.5;}
 tbody tr { cursor: pointer; }
 tbody tr:hover { background: #f9f9f9; }
 .empty { color: #666; text-align: center; padding: 2rem; }
@@ -120,7 +169,7 @@ tbody tr:hover { background: #f9f9f9; }
   td + td { border-top: 1px solid #eef0eb; }
   td::before { content: attr(data-label) ' · '; color: #617052; font-size: 0.75rem; font-weight: 600; }
   td:first-child::before { content: ''; }
-  .activity-months { line-height: 1.45; }
+  .month-section h2 { font-size: 1.05rem; }
 }
 </style>
 
