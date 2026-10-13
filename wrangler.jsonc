@@ -5,7 +5,7 @@
   "compatibility_date": "2026-10-01",
   "d1_databases": [{
     "binding": "DB", "database_name": "tuinapp",
-    "database_id": "00000000-0000-0000-0000-000000000000",
+    "database_id": "610e681f-4f5f-45f2-983b-aa11002d294d",
     "migrations_dir": "cloudflare/migrations"
   }],
   "r2_buckets": [{ "binding": "BACKUPS", "bucket_name": "tuinapp-backups" }],
