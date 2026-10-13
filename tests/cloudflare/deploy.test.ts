@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
-import { deploy } from '../../scripts/cloudflare-deploy';
+import { deploy, runSpawnedCommand } from '../../scripts/cloudflare-deploy';
 
 let root: string;
 const env = { CLOUDFLARE_ACCOUNT_ID: 'a'.repeat(32), CLOUDFLARE_API_TOKEN: 'test-only', CLOUDFLARE_D1_DATABASE_ID: '00000000-0000-0000-0000-000000000000', CLOUDFLARE_PAGES_PROJECT: 'tuinapp', CLOUDFLARE_R2_BUCKET: 'tuinapp-backups', TUINAPP_PUBLIC_ORIGIN: 'https://tuin.example.test', GITHUB_SHA: 'b'.repeat(40) };
@@ -19,15 +19,24 @@ beforeEach(() => {
 afterEach(() => { rmSync(root, { recursive: true, force: true }); vi.restoreAllMocks(); });
 function fakeRunner(options: { corrupt?: boolean; failUpload?: boolean; futureLedger?: boolean } = {}) {
   const calls: string[][] = [];
+  const captureFlags: boolean[] = [];
+  const sensitiveFlags: boolean[] = [];
   let staging: string | undefined;
-  const run = (args: string[], _capture = false, cwd?: string): string => {
+  const signedExportUrl = 'https://api.cloudflare.com/download/db?token=temporary-secret';
+  const run = (args: string[], capture = false, cwd?: string, sensitive = false): string => {
     calls.push(args);
+    captureFlags.push(capture);
+    sensitiveFlags.push(sensitive);
     if (args[0] === 'd1' && args[1] === 'execute') {
       const sql = args[args.indexOf('--command') + 1];
       const results = sql.includes('sqlite_master') ? [{ name: 'app_state' }, { name: 'd1_migrations' }] : [{ name: options.futureLedger ? '9999_future.sql' : '0001_initial.sql' }];
       return JSON.stringify([{ success: true, results }]);
     }
-    if (args[1] === 'export') writeFileSync(args[args.indexOf('--output') + 1], 'verified native SQL dump');
+    if (args[1] === 'export') {
+      writeFileSync(args[args.indexOf('--output') + 1], 'verified native SQL dump');
+      if (!capture) console.log(signedExportUrl); // Model Wrangler's inherited stdout leak.
+      return signedExportUrl;
+    }
     if (args[0] === 'r2' && args[2] === 'put' && options.failUpload) throw new Error('R2 unavailable');
     if (args[0] === 'r2' && args[2] === 'get') writeFileSync(args[args.indexOf('--file') + 1], options.corrupt ? 'corrupt' : 'verified native SQL dump');
     if (args[0] === 'pages') {
@@ -38,10 +47,19 @@ function fakeRunner(options: { corrupt?: boolean; failUpload?: boolean; futureLe
     }
     return '';
   };
-  return { run, calls, get staging() { return staging; } };
+  return { run, calls, captureFlags, sensitiveFlags, signedExportUrl, get staging() { return staging; } };
 }
 it('verifies offsite export before migration and uses supported Pages config discovery', () => {
-  const runner = fakeRunner(); deploy(env, runner.run, root);
+  const runner = fakeRunner();
+  const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+  deploy(env, runner.run, root);
+  const exportIndex = runner.calls.findIndex(args => args[0] === 'd1' && args[1] === 'export');
+  expect(exportIndex).toBeGreaterThanOrEqual(0);
+  expect(runner.captureFlags[exportIndex]).toBe(true);
+  expect(runner.sensitiveFlags[exportIndex]).toBe(true);
+  expect(log.mock.calls.flat().join('\n')).not.toContain(runner.signedExportUrl);
+  log.mockRestore();
+  expect(runner.calls.join('\n')).not.toContain(runner.signedExportUrl);
   const operations = runner.calls.map(args => args.slice(0, 3).join(' '));
   expect(operations.indexOf('r2 object get')).toBeLessThan(operations.indexOf('d1 migrations apply'));
   expect(operations.indexOf('d1 migrations apply')).toBeLessThan(operations.indexOf('pages deploy dist'));
@@ -54,4 +72,14 @@ it.each([{ corrupt: true }, { failUpload: true }, { futureLedger: true }])('does
 it('refuses changed migration files before contacting Cloudflare', () => {
   writeFileSync(join(root, 'cloudflare/migrations/0001_initial.sql'), 'DROP TABLE test;');
   const run = vi.fn(); expect(() => deploy(env, run, root)).toThrow('checksum mismatch'); expect(run).not.toHaveBeenCalled();
+});
+
+it('redacts stdout and stderr from a failed sensitive child process', () => {
+  const secret = 'signed-download-token-must-not-appear';
+  let message = '';
+  try {
+    runSpawnedCommand(process.execPath, ['-e', `process.stdout.write(${JSON.stringify(secret)});process.stderr.write(${JSON.stringify(secret)});process.exit(17)`], false, undefined, true);
+  } catch (error) { message = error instanceof Error ? error.message : String(error); }
+  expect(message).toContain('Cloudflare command failed');
+  expect(message).not.toContain(secret);
 });

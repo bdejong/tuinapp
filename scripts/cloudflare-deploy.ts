@@ -11,14 +11,21 @@ function required(name: string, env: NodeJS.ProcessEnv): string {
   if (!value) throw new Error(`${name} must be configured before production deployment`);
   return value;
 }
-function run(args: string[], capture = false, cwd?: string): string {
-  const result = spawnSync(process.execPath, [resolve('node_modules/wrangler/bin/wrangler.js'), ...args], {
-    cwd, encoding: 'utf8', stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+export function runSpawnedCommand(command: string, args: string[], capture = false, cwd?: string, sensitive = false): string {
+  const pipeOutput = capture || sensitive;
+  const result = spawnSync(command, args, {
+    cwd, encoding: 'utf8', stdio: pipeOutput ? ['ignore', 'pipe', 'pipe'] : 'inherit',
     env: { ...process.env, CI: 'true', WRANGLER_SEND_METRICS: 'false' },
     maxBuffer: 16 * 1024 * 1024,
   });
-  if (result.status !== 0) throw new Error(`Cloudflare command failed: ${args.slice(0, 3).join(' ')}${capture ? `\n${result.stderr}` : ''}`);
+  if (result.status !== 0) {
+    if (sensitive) throw new Error('Sensitive Cloudflare command failed; output was suppressed');
+    throw new Error(`Cloudflare command failed: ${args.slice(0, 3).join(' ')}${capture ? `\n${result.stderr}` : ''}`);
+  }
   return result.stdout ?? '';
+}
+function run(args: string[], capture = false, cwd?: string, sensitive = false): string {
+  return runSpawnedCommand(process.execPath, [resolve('node_modules/wrangler/bin/wrangler.js'), ...args], capture, cwd, sensitive);
 }
 export function deploy(env: NodeJS.ProcessEnv = process.env, runCommand = run, root = process.cwd()): void {
 const path = (...parts: string[]) => resolve(root, ...parts);
@@ -69,7 +76,9 @@ try {
   const key = `releases/${stamp}-${release}.sql`;
   const dump = join(scratch, 'before-deploy.sql');
   const readback = join(scratch, 'verified.sql');
-  runCommand(['d1', 'export', 'DB', '--config', pagesConfig, '--remote', '--output', dump]);
+  // Wrangler prints a temporary signed database-download URL to stdout. Keep
+  // that credential-like URL inside the captured result; never inherit it into CI logs.
+  runCommand(['d1', 'export', 'DB', '--config', pagesConfig, '--remote', '--output', dump], true, undefined, true);
   if (readFileSync(dump).byteLength === 0) throw new Error('D1 export was empty');
   runCommand(['r2', 'object', 'put', `${bucket}/${key}`, '--remote', '--file', dump, '--content-type', 'application/sql']);
   runCommand(['r2', 'object', 'get', `${bucket}/${key}`, '--remote', '--file', readback]);
