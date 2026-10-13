@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildRestoreSql } from '../../cloudflare/restore';
 import type { Dataset } from '../../cloudflare/dump';
-import { makeDump } from '../../cloudflare/dump';
+import { makeDump, makeJsonBackup } from '../../cloudflare/dump';
 import { restoreDownloadedBackup } from '../../scripts/cloudflare-restore';
 
 const migrations = ['0001_initial.sql', '0002_data_generation.sql', '0003_remove_plant_photos.sql'];
@@ -19,6 +19,13 @@ function fixture(): Dataset {
     sqlite_sequence: [{ name: 'plants', seq: 51 }, { name: 'activities', seq: 8 }],
     generation: 1,
   };
+}
+
+async function jsonBackup(data: Dataset): Promise<string> {
+  const payload = JSON.stringify({ schema_version: 3, generation: data.generation, plants: data.plants, activities: data.activities, imports: data.imports, sqlite_sequence: data.sqlite_sequence });
+  const digest = await crypto.subtle.digest('SHA-256', Buffer.from(payload));
+  const sha = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return makeJsonBackup(payload, sha);
 }
 
 function database(): DatabaseSync {
@@ -101,13 +108,13 @@ describe('CLI-generated guarded database restore SQL', () => {
     const dir = mkdtempSync(join(tmpdir(), 'tuinapp-cli-test-'));
     try {
       const config = join(dir, 'wrangler.jsonc');
-      const backup = join(dir, 'download.sql');
+      const backup = join(dir, 'download.json');
       writeFileSync(config, JSON.stringify({
         name: 'tuinapp',
         d1_databases: [{ binding: 'DB', database_name: 'tuinapp', database_id: '610e681f-4f5f-45f2-983b-aa11002d294d' }],
         r2_buckets: [{ binding: 'BACKUPS', bucket_name: 'tuinapp-backups' }],
       }));
-      writeFileSync(backup, makeDump(fixture()));
+      writeFileSync(backup, await jsonBackup(fixture()));
       const commands: string[][] = [];
       let importSql = '';
       let importReached = false;

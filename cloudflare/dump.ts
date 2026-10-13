@@ -1,11 +1,7 @@
-export const BACKUP_FORMAT = 'tuinapp-backup-v1';
-export const CURRENT_SCHEMA_VERSION = 3;
+import { CURRENT_SCHEMA_VERSION, JSON_BACKUP_FORMAT, TABLES } from './backup-snapshot';
+export { CURRENT_SCHEMA_VERSION, JSON_BACKUP_FORMAT, JSON_SNAPSHOT_QUERY, MAX_JSON_PAYLOAD_BYTES, makeJsonBackup, TABLES } from './backup-snapshot';
 
-export const TABLES = {
-  plants: ['id','name','plant_type','sun_requirements','sow_periods','plant_periods','notes','created_at','updated_at','needs_reorder','revision'],
-  activities: ['id','name','description','active_periods','created_at','updated_at','revision'],
-  imports: ['fingerprint','kind','imported_at','row_count'],
-} as const;
+export const BACKUP_FORMAT = 'tuinapp-backup-v1';
 
 const legacyV2PhotoColumns = ['id','plant_id','sort_order','image_data','created_at'] as const;
 export type TableName = keyof typeof TABLES;
@@ -14,6 +10,16 @@ export type Dataset = { [K in TableName]: Record<string, SqlValue>[] } & {
   sqlite_sequence: { name: string; seq: number }[];
   generation: number;
 };
+
+export interface JsonSnapshotRow {
+  schema_version: number;
+  generation: number;
+  plants: number;
+  activities: number;
+  payload_bytes: number;
+  valid: number;
+  payload: string | null;
+}
 
 export async function readDataset(db: D1Database): Promise<Dataset> {
   const tables = Object.keys(TABLES) as TableName[];
@@ -218,4 +224,59 @@ export function parseDump(text: string): ParsedDump {
   } else dataset.sqlite_sequence = legacySequences;
   validateDataset(dataset);
   return { schemaVersion: version, generation: dataset.generation, dataset };
+}
+
+function exactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+  const keys = Object.keys(value).sort();
+  return keys.length === expected.length && keys.every((key, index) => key === [...expected].sort()[index]);
+}
+
+export async function parseBackup(text: string): Promise<ParsedDump> {
+  if (new TextEncoder().encode(text).byteLength > 50 * 1024 * 1024) throw new Error('Backup file exceeds the 50 MiB limit');
+  if (!text.startsWith('{"format":"' + JSON_BACKUP_FORMAT + '","sha256":"')) return parseDump(text);
+  const prefix = '{"format":"' + JSON_BACKUP_FORMAT + '","sha256":"';
+  const delimiter = '","data":';
+  const hashStart = prefix.length;
+  const hashEnd = hashStart + 64;
+  if (!/^[a-f0-9]{64}$/.test(text.slice(hashStart, hashEnd)) || text.slice(hashEnd, hashEnd + delimiter.length) !== delimiter || !text.endsWith('}\n')) throw new Error('JSON backup framing is incomplete or invalid');
+  const payloadStart = hashEnd + delimiter.length;
+  const payload = text.slice(payloadStart, -2);
+  if (!payload || payload.startsWith(' ') || payload.endsWith(' ')) throw new Error('JSON backup payload framing is invalid');
+  const actual = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload)))]
+    .map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  if (actual !== text.slice(hashStart, hashEnd)) throw new Error('JSON backup checksum does not match');
+  let decoded: unknown;
+  try { decoded = JSON.parse(payload) as unknown; }
+  catch { throw new Error('JSON backup payload is malformed'); }
+  if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded)) throw new Error('JSON backup payload has an invalid shape');
+  const envelope = decoded as Record<string, unknown>;
+  const expected = ['schema_version','generation','plants','activities','imports','sqlite_sequence'];
+  if (envelope.schema_version !== CURRENT_SCHEMA_VERSION) {
+    if (typeof envelope.schema_version === 'number' && envelope.schema_version > CURRENT_SCHEMA_VERSION) throw new Error('Backup schema is newer than this application');
+    throw new Error('JSON backup payload has an unsupported schema or shape');
+  }
+  if (!exactKeys(envelope, expected)) throw new Error('JSON backup payload has an unsupported schema or shape');
+  if (!Number.isSafeInteger(envelope.generation) || (envelope.generation as number) < 0) throw new Error('Backup has an invalid generation value');
+  const tableKeys: Record<TableName, readonly string[]> = {
+    plants: TABLES.plants, activities: TABLES.activities, imports: TABLES.imports,
+  };
+  for (const table of Object.keys(tableKeys) as TableName[]) {
+    const rows = envelope[table];
+    if (!Array.isArray(rows) || rows.some((row) => !row || typeof row !== 'object' || Array.isArray(row) || !exactKeys(row as Record<string, unknown>, tableKeys[table]))) {
+      throw new Error('JSON backup has invalid ' + table + ' rows');
+    }
+  }
+  if (!Array.isArray(envelope.sqlite_sequence) || envelope.sqlite_sequence.some((row) =>
+    !row || typeof row !== 'object' || Array.isArray(row) || !exactKeys(row as Record<string, unknown>, ['name','seq']))) {
+    throw new Error('JSON backup has invalid SQLite sequence rows');
+  }
+  const dataset = {
+    plants: envelope.plants,
+    activities: envelope.activities,
+    imports: envelope.imports,
+    sqlite_sequence: envelope.sqlite_sequence,
+    generation: envelope.generation,
+  } as Dataset;
+  validateDataset(dataset);
+  return { schemaVersion: CURRENT_SCHEMA_VERSION, generation: dataset.generation, dataset };
 }

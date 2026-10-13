@@ -71,22 +71,22 @@ test('calendar prints all categories and saved backups download', async ({ page 
   await expect(page.getByText('Changes are checked daily.', { exact: false })).toBeVisible();
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('link', { name: /Download backup from/ }).first().click();
-  const download = await downloadPromise; expect(download.suggestedFilename()).toMatch(/^tuinapp-.*\.sql$/);
+  const download = await downloadPromise; expect(download.suggestedFilename()).toMatch(/^tuinapp-.*\.json$/);
   await page.getByText('Plants', { exact: true }).first().click();
   await page.getByRole('cell', { name: 'Uncategorized calendar plant', exact: true }).click();
   await page.getByRole('button', { name: 'Delete', exact: true }).click();await page.getByRole('button', { name: 'Yes, Delete' }).click();
 });
 
-test('keeps SQL backups downloadable without exposing a browser restore workflow', async ({ page }) => {
+test('keeps backups downloadable without exposing a browser restore workflow', async ({ page }) => {
   await page.getByText('Settings', { exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Settings & backups' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Restore from a SQL dump' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: /restore/i })).toHaveCount(0);
   await expect(page.locator('input[type=file]')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Restore garden' })).toHaveCount(0);
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('link', { name: /Download backup from/ }).first().click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/^tuinapp-.*\.sql$/);
+  expect(download.suggestedFilename()).toMatch(/^tuinapp-.*\.json$/);
   const dump = readFileSync((await download.path())!);
-  expect(dump.toString()).toContain('tuinapp-backup-v1');
+  expect(dump.toString()).toContain('"format":"tuinapp-backup-v2"');
 });

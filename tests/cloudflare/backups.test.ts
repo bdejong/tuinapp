@@ -3,7 +3,7 @@ import { Miniflare } from 'miniflare';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { handleBackups, scheduledBackup } from '../../cloudflare/backups';
-import { parseDump } from '../../cloudflare/dump';
+import { parseBackup } from '../../cloudflare/dump';
 import type { Env } from '../../cloudflare/types';
 
 let mf: Miniflare;
@@ -60,8 +60,53 @@ describe('Cloudflare backups', () => {
     expect(changed.backups).toHaveLength(3);
     const latest = await call('GET', `/backups/${changed.backups[0].file}/download`);
     expect(latest.status).toBe(200);
-    expect(latest.headers.get('content-type')).toContain('application/sql');
-    expect(parseDump(await latest.text()).dataset.plants).toEqual([]);
+    expect(latest.headers.get('content-type')).toContain('application/json');
+    expect((await parseBackup(await latest.text())).dataset.plants).toEqual([]);
+  });
+
+  it('serializes complete data in SQLite and preserves Unicode, NUL text, and sequence high-water marks', async () => {
+    await env.DB.prepare("INSERT INTO plants(id,name,plant_type,sun_requirements,sow_periods,plant_periods,notes,created_at,updated_at,needs_reorder,revision) VALUES(17,?,'herb',7,8388611,12,?,?,?,1,9)")
+      .bind("Épinard '🌱'", 'first\0second\nlast', '2020-01-01', '2026-10-12').run();
+    await env.DB.prepare("INSERT INTO activities(id,name,description,active_periods,created_at,updated_at,revision) VALUES(4,'Water',?,8388609,'2020-02-01','2026-10-12',3)").bind('daily\0note').run();
+    await env.DB.prepare("INSERT INTO imports(fingerprint,kind,imported_at,row_count) VALUES('sha256:abc','legacy','2022-01-01',18)").run();
+    await env.DB.prepare("UPDATE sqlite_sequence SET seq=99 WHERE name='plants'").run();
+    await scheduledBackup(env);
+    const status = await responseJson<{backups:{file:string}[]}>(await call('GET', '/backups/status'));
+    const file = status.backups[0].file;
+    const response = await call('GET', `/backups/${file}/download`);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    const parsed = await parseBackup(await response.text());
+    expect(parsed.dataset).toMatchObject({
+      plants: [{ id: 17, name: "Épinard '🌱'", notes: 'first\0second\nlast', sow_periods: 8388611, revision: 9 }],
+      activities: [{ id: 4, description: 'daily\0note', active_periods: 8388609, revision: 3 }],
+      imports: [{ fingerprint: 'sha256:abc', row_count: 18 }],
+      sqlite_sequence: [{ name: 'activities', seq: 4 }, { name: 'plants', seq: 99 }],
+    });
+  });
+
+  it('rejects malformed D1 values before uploading a snapshot', async () => {
+    await env.DB.prepare("INSERT INTO plants(id,name,revision) VALUES(0,'Invalid identifier',1)").run();
+    await expect(scheduledBackup(env)).rejects.toThrow('cannot be represented by a valid backup');
+    expect((await responseJson<{backups:unknown[];last_error:string}>(await call('GET', '/backups/status'))).backups).toHaveLength(0);
+    expect((await responseJson<{last_error:string}>(await call('GET', '/backups/status'))).last_error).toContain('cannot be represented');
+    expect(await env.BACKUPS.list()).toMatchObject({ objects: [] });
+    await env.DB.prepare('DELETE FROM plants WHERE id=0').run();
+    await env.DB.prepare('INSERT INTO plants(id,name) VALUES(1,?)').bind('\t\n').run();
+    await expect(scheduledBackup(env)).rejects.toThrow('cannot be represented by a valid backup');
+    expect(await env.BACKUPS.list()).toMatchObject({ objects: [] });
+    await env.DB.prepare('DELETE FROM plants WHERE id=1').run();
+    await env.DB.prepare('INSERT INTO plants(id,name) VALUES(1,?)').bind('Tomato\0').run();
+    await scheduledBackup(env);
+    const status = await responseJson<{backups:{file:string}[]}>(await call('GET', '/backups/status'));
+    const downloaded = await call('GET', `/backups/${status.backups[0].file}/download`);
+    expect((await parseBackup(await downloaded.text())).dataset.plants[0].name).toBe('Tomato\0');
+  });
+
+  it('fails closed before R2 when the single-row JSON snapshot limit is exceeded', async () => {
+    await env.DB.prepare('INSERT INTO plants(name,notes) VALUES(?,?)').bind('Large but valid', 'x'.repeat(1_800_000)).run();
+    await expect(scheduledBackup(env)).rejects.toThrow('too large for one D1 JSON snapshot row');
+    expect(await env.BACKUPS.list()).toMatchObject({ objects: [] });
+    expect((await responseJson<{backups:unknown[];last_error:string}>(await call('GET', '/backups/status'))).backups).toHaveLength(0);
   });
 
   it('records a failed scheduled upload and retries successfully on the next cron run', async () => {
@@ -109,13 +154,13 @@ describe('Cloudflare backups', () => {
     await scheduledBackup(env);
     let latest = await responseJson<{ backups: { file: string }[] }>(await call('GET', '/backups/status'));
     expect(latest.backups[0].file).not.toBe(file);
-    expect((await (await call('GET', `/backups/${latest.backups[0].file}/download`)).text())).toContain('-- tuinapp-backup-v1');
+    expect((await (await call('GET', `/backups/${latest.backups[0].file}/download`)).text())).toContain('"format":"tuinapp-backup-v2"');
     await env.BACKUPS.delete(`backups/${latest.backups[0].file}`);
     await scheduledBackup(env);
     latest = await responseJson<{ backups: { file: string }[] }>(await call('GET', '/backups/status'));
     const repaired = await call('GET', `/backups/${latest.backups[0].file}/download`);
     expect(repaired.status).toBe(200);
-    expect(await repaired.text()).toContain("INSERT INTO plants (id,name");
+    expect(await repaired.text()).toContain('"plants"');
   });
 
   it('does not expose a website restore endpoint', async () => {

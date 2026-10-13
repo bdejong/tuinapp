@@ -121,7 +121,7 @@ for (const width of widths) {
     expect((await downloadLink.boundingBox())?.height).toBeGreaterThanOrEqual(44);
     const download = page.waitForEvent('download');
     await downloadLink.click();
-    expect((await download).suggestedFilename()).toMatch(/^tuinapp-.*\.sql$/);
+    expect((await download).suggestedFilename()).toMatch(/^tuinapp-.*\.json$/);
     await expectNoPageOverflow(page, width);
 
     const sessionResponse = await page.request.get('/api/session');

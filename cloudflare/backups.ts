@@ -1,10 +1,10 @@
 import type { Env } from './types';
-import { CURRENT_SCHEMA_VERSION, makeDump, readDataset } from './dump';
+import { CURRENT_SCHEMA_VERSION, JSON_SNAPSHOT_QUERY, MAX_JSON_PAYLOAD_BYTES, makeJsonBackup } from './backup-snapshot';
 
 interface StateRow {
   schema_version: number; generation: number; restore_epoch: number; backup_generation: number; backup_last_success: number | null;
   backup_last_error: string | null; backup_failed_at: number | null; backup_last_checked_at: number | null;
-  backup_checked_unchanged: number; restore_verified_at: number | null;
+  backup_checked_unchanged: number; restore_verified_at: number | null; backup_lease_until: number | null;
 }
 interface Manifest {
   file: string; created_at: string; reason: string; generation: number; sha256: string; bytes: number;
@@ -12,7 +12,7 @@ interface Manifest {
 }
 const checkInterval = 86400;
 const retention = 90;
-const sqlMime = 'application/sql; charset=utf-8';
+const jsonMime = 'application/json; charset=utf-8';
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
@@ -31,7 +31,7 @@ async function objectBytes(object: R2ObjectBody): Promise<Uint8Array> {
 }
 
 async function currentState(env: Env): Promise<StateRow> {
-  const row = await env.DB.prepare('SELECT schema_version,generation,restore_epoch,backup_generation,backup_last_success,backup_last_error,backup_failed_at,backup_last_checked_at,backup_checked_unchanged,restore_verified_at FROM app_state WHERE id=1').first<StateRow>();
+  const row = await env.DB.prepare('SELECT schema_version,generation,restore_epoch,backup_generation,backup_last_success,backup_last_error,backup_failed_at,backup_last_checked_at,backup_checked_unchanged,restore_verified_at,backup_lease_until FROM app_state WHERE id=1').first<StateRow>();
   if (!row) throw new Error('Cloud database is not initialized; apply the D1 migrations first');
   if (row.schema_version > CURRENT_SCHEMA_VERSION) throw new Error('Database schema is newer than this application');
   if (row.schema_version !== CURRENT_SCHEMA_VERSION) throw new Error('Database schema is not ready; apply the D1 migrations first');
@@ -45,23 +45,43 @@ async function recordFailure(env: Env, error: unknown): Promise<void> {
 }
 
 function validFile(file: string): boolean {
-  return /^tuinapp-[0-9]{8}T[0-9]{6}Z-[0-9]+-[a-f0-9]{8}-[a-f0-9]{8}\.sql$/.test(file);
+  return /^tuinapp-[0-9]{8}T[0-9]{6}Z-[0-9]+-[a-f0-9]{8}-[a-f0-9]{8}\.(?:sql|json)$/.test(file);
 }
 
-async function saveSnapshot(env: Env, reason: string, dataset?: Awaited<ReturnType<typeof readDataset>>): Promise<Manifest> {
-  await currentState(env);
-  const snapshot = dataset ?? await readDataset(env.DB);
-  // This is generated from the constrained current D1 schema below, not user SQL.
-  // Its R2 read-back is SHA-256 verified before publishing the manifest; parsing
-  // it again here duplicated the complete upload parser on every restore.
-  const dump = makeDump(snapshot);
-  const dumpBytes = encoder.encode(dump);
+interface Snapshot {
+  schema_version: number; generation: number; plants: number; activities: number; payload_bytes: number; valid: number; payload: string | null;
+}
+async function readSnapshot(env: Env): Promise<Snapshot> {
+  const snapshot = await env.DB.prepare(JSON_SNAPSHOT_QUERY).first<Snapshot>();
+  if (!snapshot) throw new Error('Database snapshot query returned no initialized garden');
+  if (snapshot.schema_version > CURRENT_SCHEMA_VERSION) throw new Error('Database schema is newer than this application');
+  if (snapshot.schema_version !== CURRENT_SCHEMA_VERSION) throw new Error('Database schema is not ready; apply the D1 migrations first');
+  if (!Number.isSafeInteger(snapshot.generation) || snapshot.generation < 0 ||
+      !Number.isSafeInteger(snapshot.plants) || snapshot.plants < 0 ||
+      !Number.isSafeInteger(snapshot.activities) || snapshot.activities < 0 ||
+      !Number.isSafeInteger(snapshot.payload_bytes) || snapshot.payload_bytes < 0) {
+    throw new Error('Database snapshot metadata is invalid');
+  }
+  if (snapshot.valid !== 1) throw new Error('Database contains data that cannot be represented by a valid backup');
+  if (snapshot.payload_bytes > MAX_JSON_PAYLOAD_BYTES || snapshot.payload === null) {
+    throw new Error('Garden is too large for one D1 JSON snapshot row; backup was not written');
+  }
+  return snapshot;
+}
+
+async function saveSnapshot(env: Env, reason: string, snapshot: Snapshot): Promise<Manifest> {
+  const payloadBytes = encoder.encode(snapshot.payload!);
+  if (payloadBytes.byteLength !== snapshot.payload_bytes || payloadBytes.byteLength > MAX_JSON_PAYLOAD_BYTES) {
+    throw new Error('D1 JSON snapshot size did not match its declared size');
+  }
+  const payloadSha = await hash(payloadBytes);
+  const dumpBytes = encoder.encode(makeJsonBackup(snapshot.payload!, payloadSha));
   const sha256 = await hash(dumpBytes);
   const now = new Date();
   const createdAt = now.toISOString();
-  const file = `tuinapp-${now.toISOString().replace(/[-:]|\.\d{3}/g, '').replace('Z', 'Z')}-${snapshot.generation}-${sha256.slice(0, 8)}-${crypto.randomUUID().slice(0, 8)}.sql`;
+  const file = 'tuinapp-' + now.toISOString().replace(/[-:]|\.\d{3}/g, '').replace('Z', 'Z') + '-' + snapshot.generation + '-' + sha256.slice(0, 8) + '-' + crypto.randomUUID().slice(0, 8) + '.json';
   const key = `backups/${file}`;
-  const uploaded = await env.BACKUPS.put(key, dumpBytes, { httpMetadata: { contentType: sqlMime }, customMetadata: { sha256, generation: String(snapshot.generation), schemaVersion: String(CURRENT_SCHEMA_VERSION) } });
+  const uploaded = await env.BACKUPS.put(key, dumpBytes, { httpMetadata: { contentType: jsonMime }, customMetadata: { sha256, generation: String(snapshot.generation), schemaVersion: String(CURRENT_SCHEMA_VERSION) } });
   if (!uploaded) throw new Error('R2 did not confirm the backup upload');
   const stored = await env.BACKUPS.get(key);
   if (!stored) throw new Error('Uploaded R2 backup could not be read back');
@@ -69,7 +89,7 @@ async function saveSnapshot(env: Env, reason: string, dataset?: Awaited<ReturnTy
   if (storedBytes.byteLength !== dumpBytes.byteLength || await hash(storedBytes) !== sha256) throw new Error('Uploaded R2 backup failed read-back verification');
   const manifest: Manifest = {
     file, created_at: createdAt, reason, generation: snapshot.generation, sha256, bytes: dumpBytes.byteLength,
-    plants: snapshot.plants.length, activities: snapshot.activities.length, uploaded_at: createdAt,
+    plants: snapshot.plants, activities: snapshot.activities, uploaded_at: createdAt,
   };
   await env.DB.batch([
     env.DB.prepare('INSERT OR REPLACE INTO backup_manifests(file,created_at,reason,generation,sha256,bytes,plants,activities,uploaded_at) VALUES(?,?,?,?,?,?,?,?,?)').bind(manifest.file, manifest.created_at, manifest.reason, manifest.generation, manifest.sha256, manifest.bytes, manifest.plants, manifest.activities, manifest.uploaded_at),
@@ -97,10 +117,17 @@ async function latestScheduledObjectIsValid(env: Env): Promise<boolean> {
 export async function scheduledBackup(env: Env): Promise<void> {
   const now = epoch();
   try {
-    await currentState(env);
-    const acquired = await env.DB.prepare('UPDATE app_state SET backup_lease_until=? WHERE id=1 AND (backup_lease_until IS NULL OR backup_lease_until<?)').bind(now + 300, now).run();
-    if ((acquired.meta.changes ?? 0) !== 1) return;
-    const state = await currentState(env);
+    const state = await env.DB.prepare(
+      'UPDATE app_state SET backup_lease_until=? WHERE id=1 AND schema_version=? AND (backup_lease_until IS NULL OR backup_lease_until<?) ' +
+      'RETURNING schema_version,generation,restore_epoch,backup_generation,backup_last_success,backup_last_error,backup_failed_at,backup_last_checked_at,backup_checked_unchanged,restore_verified_at'
+    ).bind(now + 300, CURRENT_SCHEMA_VERSION, now).first<StateRow>();
+    if (!state) {
+      // The lease acquisition is the common fast path. This read only distinguishes
+      // an active lease from a schema that cannot be backed up.
+      const current = await currentState(env);
+      if (current.backup_lease_until !== null && current.backup_lease_until >= now) return;
+      throw new Error('Backup lease could not be acquired');
+    }
     if (state.generation === state.backup_generation) {
       // A committed D1 manifest alone is not a usable backup. Repair missing or
       // damaged R2 state even when the garden has not changed since that snapshot.
@@ -109,8 +136,8 @@ export async function scheduledBackup(env: Env): Promise<void> {
         return;
       }
     }
-    const dataset = await readDataset(env.DB);
-    await saveSnapshot(env, 'scheduled', dataset);
+    const snapshot = await readSnapshot(env);
+    await saveSnapshot(env, 'scheduled', snapshot);
   } catch (error) {
     try { await recordFailure(env, error); } catch { /* Keep the original backup error visible to the scheduler. */ }
     throw error;
@@ -133,7 +160,7 @@ async function download(env: Env, file: string): Promise<Response> {
   if (!object) return json({ error: 'Backup object is missing from R2' }, 404);
   const bodyBytes = await objectBytes(object);
   if (bodyBytes.byteLength !== manifest.bytes || await hash(bodyBytes) !== manifest.sha256) return json({ error: 'Backup failed its integrity check' }, 500);
-  return new Response(bodyBytes, { headers: { 'content-type': sqlMime, 'content-disposition': `attachment; filename="${file}"`, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } });
+  return new Response(bodyBytes, { headers: { 'content-type': file.endsWith('.json') ? jsonMime : 'application/sql; charset=utf-8', 'content-disposition': `attachment; filename="${file}"`, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } });
 }
 
 export async function handleBackups(request: Request, env: Env): Promise<Response> {

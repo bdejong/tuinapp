@@ -2,7 +2,7 @@
 
 A private garden planner built with Vue and TypeScript, prepared for Cloudflare Pages, D1 and R2. Manage plants, sowing and planting periods, seed orders, activities and monthly printable PDF calendars.
 
-The Cloudflare port preserves the existing UI and PDF layout. Daily backups save changed garden data to private R2 storage; Settings lists downloadable SQL dumps. Restoration is an operator-only shell utility, with a verified recovery backup before replacement. Database migrations run before deployment with a verified recovery dump.
+The Cloudflare port preserves the existing UI and PDF layout. Daily backups save changed garden data to private R2 storage; Settings lists downloadable JSON backups. Restoration is an operator-only shell utility, with a verified recovery backup before replacement. Database migrations run before deployment with a verified recovery dump.
 
 ## Development and tests
 

@@ -4,6 +4,8 @@
   "main": "scheduler.ts",
   "compatibility_date": "2026-10-01",
   "workers_dev": false,
+  "durable_objects": { "bindings": [{ "name": "BACKUP_RUNNER", "class_name": "BackupRunner" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["BackupRunner"] }],
   "triggers": { "crons": ["15 2 * * *"] },
   "d1_databases": [{
     "binding": "DB", "database_name": "tuinapp",

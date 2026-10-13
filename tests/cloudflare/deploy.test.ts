@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { deploy, runSpawnedCommand } from '../../scripts/cloudflare-deploy';
@@ -33,6 +33,10 @@ function fakeRunner(options: { corrupt?: boolean; failUpload?: boolean; futureLe
       return JSON.stringify([{ success: true, results }]);
     }
     if (args[1] === 'export') {
+      const cronConfig = JSON.parse(readFileSync(join(dirname(args[args.indexOf('--config') + 1]), 'wrangler.scheduler.jsonc'), 'utf8'));
+      expect(cronConfig.durable_objects.bindings).toEqual([{ name: 'BACKUP_RUNNER', class_name: 'BackupRunner' }]);
+      expect(cronConfig.migrations).toEqual([{ tag: 'v1', new_sqlite_classes: ['BackupRunner'] }]);
+      expect(cronConfig.triggers.crons).toEqual(['15 2 * * *']);
       writeFileSync(args[args.indexOf('--output') + 1], 'verified native SQL dump');
       if (!capture) console.log(signedExportUrl); // Model Wrangler's inherited stdout leak.
       return signedExportUrl;

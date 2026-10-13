@@ -214,7 +214,7 @@ test('failed backup download keeps Settings open and allows retry', async ({page
   await expect(page.getByRole('heading',{name:'Settings & backups'})).toBeVisible();
   await page.unroute('**/api/backups/*/download');
   const pending=page.waitForEvent('download'); await page.getByRole('link',{name:/Download backup from/}).first().click();
-  expect((await pending).suggestedFilename()).toMatch(/^tuinapp-.*\.sql$/);
+  expect((await pending).suggestedFilename()).toMatch(/^tuinapp-.*\.json$/);
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
@@ -225,7 +225,7 @@ test('backup downloads stay accessible without upload or replacement controls',a
   await expect(page.getByRole('link',{name:/Download backup from/}).first()).toBeVisible();
   const download=page.waitForEvent('download');
   await page.getByRole('link',{name:/Download backup from/}).first().click();
-  expect((await download).suggestedFilename()).toMatch(/^tuinapp-.*\.sql$/);
+  expect((await download).suggestedFilename()).toMatch(/^tuinapp-.*\.json$/);
 });
 
 test('sign out hides private data and signing back in reopens the garden', async ({page})=>{

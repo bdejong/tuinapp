@@ -57,6 +57,8 @@ try {
   }, null, 2), { mode: 0o600, flag: 'wx' });
   writeFileSync(cronConfig, JSON.stringify({ name: `${project}-backups`, main: path('cloudflare/scheduler.ts'), compatibility_date: '2026-10-01', workers_dev: false,
     triggers: { crons: ['15 2 * * *'] },
+    durable_objects: { bindings: [{ name: 'BACKUP_RUNNER', class_name: 'BackupRunner' }] },
+    migrations: [{ tag: 'v1', new_sqlite_classes: ['BackupRunner'] }],
     d1_databases: [{ binding: 'DB', database_name: project, database_id: databaseId, migrations_dir: 'migrations' }],
     r2_buckets: [{ binding: 'BACKUPS', bucket_name: bucket }],
   }, null, 2), { mode: 0o600, flag: 'wx' });

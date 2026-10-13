@@ -3,7 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import SettingsView from '../../src/components/SettingsView.vue';
 import { getBackupStatus, downloadBackup, type BackupStatus, type BackupEntry } from '../../src/api';
 vi.mock('../../src/api',async original=>({ ...await original<typeof import('../../src/api')>(), getBackupStatus:vi.fn(),downloadBackup:vi.fn() }));
-const saved: BackupEntry = {file:'tuinapp-one.sql',created_at:'2026-01-02T10:00:00Z',reason:'scheduled',plants:177,activities:9,bytes:53248,uploaded_at:null};
+const saved: BackupEntry = {file:'tuinapp-one.json',created_at:'2026-01-02T10:00:00Z',reason:'scheduled',plants:177,activities:9,bytes:53248,uploaded_at:null};
 const empty: BackupStatus = {latest:null,backups:[],last_error:null,last_checked_at:null,checked_unchanged:false,check_interval_seconds:300,offsite:null,storage:'r2'};
 const history: BackupStatus = {...empty,latest:saved,backups:[saved],last_checked_at:new Date().toISOString()};
 beforeEach(()=>{vi.resetAllMocks();vi.mocked(getBackupStatus).mockResolvedValue(history);});
@@ -21,11 +21,11 @@ it('shows the empty state and R2 storage without browser restore controls',async
 it('lists dates, counts, size and links to existing backups only',async()=>{
   const w=mount(SettingsView);await flushPromises();const row=w.get('tbody tr');
   expect(row.text()).toContain('177 plants · 9 activities');expect(row.text()).toContain('52 KB');
-  expect(row.get('time').attributes('datetime')).toBe(saved.created_at);expect(row.get('a').attributes('href')).toBe('/api/backups/tuinapp-one.sql/download');
-  expect(row.get('a').attributes('aria-label')).toContain('Download backup from');expect(row.get('a').text()).toBe('Download SQL dump');
+  expect(row.get('time').attributes('datetime')).toBe(saved.created_at);expect(row.get('a').attributes('href')).toBe('/api/backups/tuinapp-one.json/download');
+  expect(row.get('a').attributes('aria-label')).toContain('Download backup from');expect(row.get('a').text()).toBe('Download backup');
 });
 it('shows pre-update safety copies and the count without exposing internal checksums',async()=>{
-  vi.mocked(getBackupStatus).mockResolvedValue({...history,backups:[{...saved,file:'tuinapp-two.sql',reason:'before-migration'},saved]});const w=mount(SettingsView);await flushPromises();
+  vi.mocked(getBackupStatus).mockResolvedValue({...history,backups:[{...saved,file:'tuinapp-two.json',reason:'before-migration'},saved]});const w=mount(SettingsView);await flushPromises();
   expect(w.findAll('tbody tr')).toHaveLength(2);expect(w.get('h3').text()).toBe('Saved backups (2)');expect(w.text()).toContain('Before an update · safety copy');
 });
 it('uses the configured check interval and distinguishes a quiet garden from overdue backups',async()=>{
@@ -60,7 +60,7 @@ it('downloads the selected saved version once and releases its object URL',async
   const click=vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});
   const w=mount(SettingsView);await flushPromises();await w.get('a').trigger('click');await w.get('a').trigger('click');
   expect(downloadBackup).toHaveBeenCalledExactlyOnceWith(saved.file);expect(w.get('a').text()).toBe('Downloading…');expect(w.get('a').attributes('aria-disabled')).toBe('true');
-  finish(new Blob(['SQL']));await flushPromises();expect(click).toHaveBeenCalledOnce();expect(create).toHaveBeenCalledOnce();expect(w.get('a').text()).toBe('Download SQL dump');
+  finish(new Blob(['JSON']));await flushPromises();expect(click).toHaveBeenCalledOnce();expect(create).toHaveBeenCalledOnce();expect(w.get('a').text()).toBe('Download backup');
   await vi.advanceTimersByTimeAsync(1000);expect(revoke).toHaveBeenCalledWith('blob:backup');expect(getBackupStatus).toHaveBeenCalledOnce();w.unmount();
 });
 it('does not start a download after leaving Settings while the file was loading',async()=>{

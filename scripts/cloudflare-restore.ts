@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createInterface } from 'node:readline/promises';
-import { CURRENT_SCHEMA_VERSION, parseDump } from '../cloudflare/dump.ts';
+import { CURRENT_SCHEMA_VERSION, parseBackup } from '../cloudflare/dump.ts';
 import { buildRestoreSql } from '../cloudflare/restore.ts';
 
 type Runner = (args: string[], sensitive?: boolean) => string;
@@ -71,7 +71,7 @@ function flags(argv: string[]): { input: string; config: string; confirmed: bool
     else if (!input) input = arg;
     else throw new Error('Specify one backup file.');
   }
-  if (!input || !config || !confirmed) throw new Error('Usage: cloudflare-restore <downloaded-backup.sql> --config wrangler.jsonc --confirm-restore');
+  if (!input || !config || !confirmed) throw new Error('Usage: cloudflare-restore <downloaded-backup.json|legacy-backup.sql> --config wrangler.jsonc --confirm-restore');
   return { input, config, confirmed };
 }
 
@@ -92,7 +92,7 @@ export async function restoreDownloadedBackup(argv: string[], run: Runner = runC
 
   const sourceBytes = readFileSync(resolve(args.input));
   const sourceText = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(sourceBytes);
-  const parsed = parseDump(sourceText);
+  const parsed = await parseBackup(sourceText);
   const { files: migrations } = listMigrations();
   const configArgs = ['--config', configPath, '--remote'];
   const stateRows = jsonRows(run(['d1', 'execute', database, ...configArgs, '--command', 'SELECT schema_version,generation,restore_epoch FROM app_state WHERE id=1', '--json']));
@@ -143,7 +143,7 @@ export async function restoreDownloadedBackup(argv: string[], run: Runner = runC
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   if (process.argv.includes('--help') || process.argv.includes('-h')) {
-    process.stdout.write('Usage: ./scripts/cloudflare-restore.sh BACKUP.sql --config wrangler.jsonc --confirm-restore\n\nRequires a terminal confirmation phrase before writing. The command validates the generated backup format, stores a verified native D1 export in private R2, then imports generated canonical SQL.\n');
+    process.stdout.write('Usage: ./scripts/cloudflare-restore.sh BACKUP.json --config wrangler.jsonc --confirm-restore\n\nRequires a terminal confirmation phrase before writing. The command validates the backup file, stores a verified native D1 export in private R2, then imports generated canonical SQL.\n');
   } else {
   try {
     const result = await restoreDownloadedBackup(process.argv.slice(2));

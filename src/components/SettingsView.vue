@@ -77,11 +77,11 @@ useSessionRestore(() => { void refresh(); });
               <td data-label="Saved"><time :datetime="backup.created_at">{{ formatDate(backup.created_at) }}</time><span class="detail">{{ backup.reason === 'scheduled' ? 'Automatic backup' : backup.reason === 'before-restore' ? 'Safety copy' : backup.reason === 'before-migration' ? 'Before an update · safety copy' : backup.reason }}</span></td>
               <td data-label="Contents">{{ backup.plants }} plants · {{ backup.activities }} activities</td>
               <td class="size" data-label="Size">{{ formatSize(backup.bytes) }}</td>
-              <td data-label="Download"><a :href="backupDownloadUrl(backup.file)" :aria-label="`Download backup from ${formatDate(backup.created_at)}`" :aria-disabled="downloading !== null || undefined" @click.prevent="download(backup)">{{ downloading === backup.file ? 'Downloading…' : 'Download SQL dump' }}</a><p v-if="downloadError?.file === backup.file" class="error download-error" role="alert">{{ downloadError.message }}</p></td>
+              <td data-label="Download"><a :href="backupDownloadUrl(backup.file)" :aria-label="`Download backup from ${formatDate(backup.created_at)}`" :aria-disabled="downloading !== null || undefined" @click.prevent="download(backup)">{{ downloading === backup.file ? 'Downloading…' : 'Download backup' }}</a><p v-if="downloadError?.file === backup.file" class="error download-error" role="alert">{{ downloadError.message }}</p></td>
             </tr></tbody>
           </table>
         </div>
-        <p v-if="status.backups.length" class="hint">Each download is a SQL dump for safekeeping.</p>
+        <p v-if="status.backups.length" class="hint">Keep a downloaded copy somewhere separate from this account.</p>
       </template>
     </section>
   </div>

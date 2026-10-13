@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TextEncoder } from 'node:util';
-import { makeDump, parseDump, readDataset, type Dataset } from '../../cloudflare/dump';
+import { JSON_BACKUP_FORMAT, makeDump, makeJsonBackup, parseBackup, parseDump, readDataset, type Dataset } from '../../cloudflare/dump';
 import { buildRestoreSql } from '../../cloudflare/restore';
 
 function sample(): Dataset {
@@ -44,6 +44,16 @@ function legacyV2Dump(): string {
   return `-- tuinapp-backup-v1\n-- schema_version=2\n-- generation=42\n-- checksum=${checksum}\n${body}-- END tuinapp-backup-v1 statements=10 checksum=${checksum}\n`;
 }
 
+async function jsonDump(dataset: Dataset): Promise<string> {
+  const payload = JSON.stringify({
+    schema_version: 3, generation: dataset.generation, plants: dataset.plants,
+    activities: dataset.activities, imports: dataset.imports, sqlite_sequence: dataset.sqlite_sequence,
+  });
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload));
+  const sha = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return makeJsonBackup(payload, sha);
+}
+
 describe('Cloudflare logical data backup format', () => {
   it('round trips garden fields and preserves AUTOINCREMENT sequence values above current IDs', () => {
     const source = sample();
@@ -52,6 +62,32 @@ describe('Cloudflare logical data backup format', () => {
     expect(parsed.schemaVersion).toBe(3);
     expect(parsed.generation).toBe(42);
     expect(parsed.dataset).toEqual(source);
+  });
+
+  it('validates the compact JSON snapshot envelope and converts it to a normal restore dataset', async () => {
+    const source = sample();
+    const dump = await jsonDump(source);
+    expect(dump).toContain('"format":"' + JSON_BACKUP_FORMAT + '"');
+    expect(await parseBackup(dump)).toMatchObject({ schemaVersion: 3, generation: 42, dataset: source });
+    expect((await parseBackup(makeDump(source))).dataset).toEqual(source);
+    await expect(parseBackup(dump.slice(0, -3))).rejects.toThrow('framing');
+    await expect(parseBackup(dump.replace("Épinard", 'Bedorf'))).rejects.toThrow('checksum');
+  });
+
+  it('rejects validly hashed JSON with future schema, invalid generation, bad sequence, or extra fields', async () => {
+    const payload = (data: unknown) => JSON.stringify(data);
+    const wrap = async (data: unknown) => {
+      const raw = payload(data);
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
+      const sha = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+      return makeJsonBackup(raw, sha);
+    };
+    const source = sample();
+    const valid = { schema_version: 3, generation: source.generation, plants: source.plants, activities: source.activities, imports: source.imports, sqlite_sequence: source.sqlite_sequence };
+    await expect(parseBackup(await wrap({ ...valid, schema_version: 4 }))).rejects.toThrow('newer than this application');
+    await expect(parseBackup(await wrap({ ...valid, generation: -1 }))).rejects.toThrow('invalid generation');
+    await expect(parseBackup(await wrap({ ...valid, sqlite_sequence: [{ name: 'plants', seq: 1 }] }))).rejects.toThrow('below an existing row ID');
+    await expect(parseBackup(await wrap({ ...valid, unrecognized: true }))).rejects.toThrow('unsupported schema or shape');
   });
 
   it('converts schema 2 garden backups by validating then dropping deprecated photo rows', () => {

@@ -52,7 +52,7 @@ Configure these GitHub Actions variables (repository or `production` environment
 | `CLOUDFLARE_R2_BUCKET` | `tuinapp-backups` |
 | `TUINAPP_PUBLIC_ORIGIN` | `https://tuin.familiedejong.be` |
 
-Add `CLOUDFLARE_API_TOKEN` as a GitHub **secret**, restricted to this account with Pages Edit, Workers Scripts Edit, D1 Edit and Workers R2 Storage Edit permissions. Never use a global API key. The scheduler only needs D1/R2 bindings; it has no public HTTP route or owner credentials.
+Add `CLOUDFLARE_API_TOKEN` as a GitHub **secret**, restricted to this account with Pages Edit, Workers Scripts Edit, D1 Edit and Workers R2 Storage Edit permissions. Never use a global API key. The private scheduler uses D1/R2 plus one SQLite-backed Durable Object namespace; it has no public HTTP route or owner credentials.
 
 On a push to `main`, the workflow:
 
@@ -81,16 +81,16 @@ Use the actual assigned Pages hostname, not a guessed name or `workers.dev`. Reg
 
 ## Backups and recovery
 
-The scheduled Worker checks at **02:15 UTC daily** (03:15 Belgian winter time / 04:15 summer time). It creates a dump after garden changes, including updates and deletes, and creates no duplicate on unchanged days. Failed uploads remain eligible for the next scheduled retry; Settings reports failures and overdue checks. Check the scheduled invocation logs after first deployment. The next daily run is the first automatic backup unless a restore has already made a recovery point.
+The scheduled Worker checks at **02:15 UTC daily** (03:15 Belgian winter time / 04:15 summer time). The cron entry dispatches to one fixed SQLite-backed Durable Object, which runs the snapshot with Durable Object's 30-second per-request CPU allowance; the small cron dispatcher remains subject to the Workers Free 10 ms limit. It creates a backup after garden changes, including updates and deletes, and creates no duplicate on unchanged days. Failed uploads remain eligible for the next scheduled retry; Settings reports failures and overdue checks. Check the scheduled invocation logs after first deployment. The next daily run is the first automatic backup unless a restore has already made a recovery point.
 
-Settings shows successful application dumps in R2, their dates, counts and sizes. It provides downloads only: there is no restore form or restore API. Downloads are restricted SQL files with integrity framing.
+Settings shows successful application backups in R2, their dates, counts and sizes. It provides downloads only: there is no restore form or restore API. New downloads are structured JSON with an integrity checksum; the operator restore utility still accepts older restricted SQL backups. The scheduled Worker currently rejects a snapshot payload above 1.75 MB before uploading it, and reports the failure in Settings.
 
 Restore a downloaded application dump from a trusted checkout with Node 24 and Cloudflare credentials:
 
 ```sh
 npm ci
 npx wrangler login
-./scripts/cloudflare-restore.sh /absolute/path/to/downloaded-backup.sql --config wrangler.jsonc --confirm-restore
+./scripts/cloudflare-restore.sh /absolute/path/to/downloaded-backup.json --config wrangler.jsonc --confirm-restore
 ```
 
 At the terminal prompt type `RESTORE tuinapp`. The utility validates the file locally and generates canonical SQL; it never executes the supplied file directly. Before replacement, it exports the live D1 database, uploads a recovery copy to private R2 under `releases/manual-restore-...`, downloads it again and checks SHA-256. It verifies the released migration checksums and exact live migration ledger. The native D1 file import atomically guards the schema, generation and restore epoch, replaces garden rows and sequences, and revokes sessions. Concurrent edits invalidate the guard and abort the import. Sign in again after a successful restore. Stale browser drafts are invalidated by the changed restore epoch.
@@ -113,7 +113,7 @@ Use additive changes first, deploy code that handles both schemas, then remove o
 
 As checked on 12 October 2026, Workers Free permits 100,000 dynamic requests/day with 10ms CPU per HTTP request or cron invocation; assets served directly by Pages do not consume Function requests. D1 Free includes 5 million rows read/day, 100,000 rows written/day and 5GB total storage. Free D1 has 10 databases with a 500MB per-database limit. R2 Standard includes 10GB-month storage, 1 million Class A and 10 million Class B operations per month, with free egress. These allowances are shared across applications; R2 excess usage can be billed. [Workers limits](https://developers.cloudflare.com/workers/platform/limits/), [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/), [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), [R2 pricing](https://developers.cloudflare.com/r2/pricing/).
 
-This small garden should fit the storage and request allowances comfortably. Local tests cannot prove Cloudflare's production CPU accounting. Measured production HTTP requests for login, garden lists and PDF data used 2–7 ms CPU. PDF generation runs in the browser and restore runs through the operator utility. Scheduled backup CPU still needs its own production measurement; continue checking D1 and R2 usage as data grows. Use one D1 database and private bucket per application; the current Free account limit is five cron triggers, so several apps may eventually share a scheduler while keeping separate data bindings.
+This small garden should fit the storage and request allowances comfortably. Local tests cannot prove Cloudflare's production CPU accounting. Measured production HTTP requests for login, garden lists and PDF data used 2–7 ms CPU. PDF generation runs in the browser and restore runs through the operator utility. Each daily run adds one Durable Object request; continue checking D1, R2, and Durable Object usage as data grows. Use one D1 database and private bucket per application; the current Free account limit is five cron triggers, so several apps may eventually share a scheduler while keeping separate data bindings.
 
 ## Local use
 
@@ -127,7 +127,7 @@ npm run cloudflare:password
 npm run server
 ```
 
-Use the URL printed by Wrangler (default port 8788). The real Cloudflare credentials are unnecessary for local D1/R2 emulation. The local scheduler does not automatically run with Pages; browser and backend tests explicitly exercise its code on disposable bindings.
+Use the URL printed by Wrangler (default port 8788). The real Cloudflare credentials are unnecessary for local D1/R2 emulation. The local scheduler does not automatically run with Pages; backend tests explicitly exercise the cron dispatcher and SQLite Durable Object against disposable bindings.
 
 ```sh
 npm run check

@@ -3,7 +3,7 @@ import { getActivities, getPlants, oneActivity, onePlant } from './db';
 import { validActivity, validPlant, type Activity, type MonthData, type Plant } from './models';
 import { handleBackups } from './backups';
 import type { Env } from './types';
-import { CURRENT_SCHEMA_VERSION } from './dump';
+import { CURRENT_SCHEMA_VERSION } from './backup-snapshot';
 
 const MAX_BODY_BYTES = 12 * 1024 * 1024;
 const CACHE_HEADERS: Record<string, string> = {
