@@ -159,13 +159,16 @@ test('sun symbols match the colored screen assets and plant forms have no photo 
   await expect(page.locator('.settings-view')).not.toContainText(/photo|camera/i);
 });
 
-test('Settings offers backups without spreadsheet import', async ({ page }) => {
+test('Settings lists automatic R2 backups and a guarded SQL restore form', async ({ page }) => {
   await page.getByRole('navigation').getByRole('button',{name:'Settings',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Settings & backups'})).toBeVisible();
   await expect(page.locator('.settings-view')).not.toContainText(/spreadsheet|import|TSV/i);
-  await expect(page.locator('input[type=file]')).toHaveCount(0);
-  await page.getByRole('button',{name:'Back up now',exact:true}).click();
-  await expect(page.getByRole('status')).toContainText('Backup created and verified.');
+  await expect(page.locator('input[type=file]')).toHaveCount(1);
+  await expect(page.getByRole('heading',{name:'Restore from a SQL dump'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Restore garden'})).toBeDisabled();
+  await expect(page.getByRole('button',{name:/Back up now|Test recovery/})).toHaveCount(0);
+  await expect(page.getByRole('link',{name:/Download backup from/}).first()).toBeVisible();
+  await expect(page.getByText('Changes are checked daily.',{exact:false})).toBeVisible();
 });
 
 test('backup status failure is explicit and retry recovers', async ({ page }) => {
@@ -205,14 +208,44 @@ for (const size of [{width:1280,height:800},{width:1920,height:1080}]) {
 
 test('failed backup download keeps Settings open and allows retry', async ({page})=>{
   await page.getByRole('navigation').getByRole('button',{name:'Settings',exact:true}).click();
-  await page.route('**/api/backups/download',r=>r.fulfill({status:503,json:{error:'Backup storage unavailable'}}));
-  await page.getByRole('button',{name:'Download backup'}).click();
+  await page.route('**/api/backups/*/download',r=>r.fulfill({status:503,json:{error:'Backup storage unavailable'}}));
+  await page.getByRole('link',{name:/Download backup from/}).first().click();
   await expect(page.getByRole('alert')).toContainText('Backup storage unavailable');
   await expect(page.getByRole('heading',{name:'Settings & backups'})).toBeVisible();
-  await page.unroute('**/api/backups/download');
-  const pending=page.waitForEvent('download'); await page.getByRole('button',{name:'Download backup'}).click();
-  expect((await pending).suggestedFilename()).toBe('tuinapp-backup.zip');
+  await page.unroute('**/api/backups/*/download');
+  const pending=page.waitForEvent('download'); await page.getByRole('link',{name:/Download backup from/}).first().click();
+  expect((await pending).suggestedFilename()).toMatch(/^tuinapp-.*\.sql$/);
   await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('SQL restore needs explicit replacement confirmation and reports success', async ({page})=>{
+  let requestWasProtected=false;
+  await page.route('**/api/backups/restore',async route=>{
+    requestWasProtected=route.request().method()==='POST' && route.request().headers()['x-tuinapp-restore-confirm']==='replace' && route.request().headers()['content-type']==='application/sql';
+    await route.fulfill({status:200,json:{ok:true}});
+  });
+  await page.getByRole('navigation').getByRole('button',{name:'Settings',exact:true}).click();
+  await page.locator('input[type=file]').setInputFiles({name:'garden.sql',mimeType:'application/sql',buffer:Buffer.from('INSERT INTO plants(name) VALUES (\'Basil\');')});
+  await expect(page.getByRole('button',{name:'Restore garden'})).toBeDisabled();
+  await page.getByLabel('I understand this replaces my current garden.').check();
+  await expect(page.getByRole('button',{name:'Restore garden'})).toBeEnabled();
+  await page.getByRole('button',{name:'Restore garden'}).click();
+  await expect(page.locator('.restore-banner')).toContainText('Garden restored');
+  expect(requestWasProtected).toBe(true);
+  await expect(page.getByRole('heading',{name:'Plants'})).toBeVisible();
+  await expect(page.locator('input[type=file]')).toHaveCount(0);
+});
+
+test('failed SQL restore keeps the selected dump and confirmation for retry',async ({page})=>{
+  await page.route('**/api/backups/restore',r=>r.fulfill({status:400,json:{error:'Dump is invalid'}}));
+  await page.getByRole('navigation').getByRole('button',{name:'Settings',exact:true}).click();
+  await page.locator('input[type=file]').setInputFiles({name:'garden.sql',mimeType:'application/sql',buffer:Buffer.from('invalid')});
+  await page.getByLabel('I understand this replaces my current garden.').check();
+  await page.getByRole('button',{name:'Restore garden'}).click();
+  await expect(page.locator('.settings-view').getByRole('alert')).toContainText('Dump is invalid');
+  await expect(page.getByText('Selected: garden.sql')).toBeVisible();
+  await expect(page.getByLabel('I understand this replaces my current garden.')).toBeChecked();
+  await expect(page.getByRole('button',{name:'Restore garden'})).toBeEnabled();
 });
 
 test('sign out hides private data and signing back in reopens the garden', async ({page})=>{

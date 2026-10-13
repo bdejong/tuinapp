@@ -5,29 +5,47 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "vue-tsc --noEmit && vite build",
+    "build": "npm run build:web && npm run typecheck:cloudflare && tsx scripts/cloudflare-build.ts",
     "preview": "vite preview",
-    "server": "node scripts/cargo.mjs run --bin tuinapp-server --",
-    "test": "node scripts/cargo.mjs test --workspace",
-    "test:golden": "node scripts/cargo.mjs test --workspace golden_database -- --ignored --nocapture",
+    "server": "wrangler pages dev dist --ip 127.0.0.1",
+    "test": "vitest run --config vitest.node.config.ts",
+    "test:golden": "vitest run --config vitest.node.config.ts tests/cloudflare/golden.test.ts",
     "test:e2e": "playwright test",
     "check": "npm run build && npm test && npm run test:ui",
     "test:ui": "vitest run",
-    "pretest:e2e": "npm run build && node scripts/cargo.mjs build --bin tuinapp-server",
-    "test:container": "node scripts/container-smoke.mjs"
+    "pretest:e2e": "npm run build",
+    "test:container": "node scripts/container-smoke.mjs",
+    "build:web": "vue-tsc --noEmit && vite build",
+    "typecheck:cloudflare": "tsc -p tsconfig.cloudflare.json",
+    "server:legacy": "node scripts/cargo.mjs run --bin tuinapp-server --",
+    "test:legacy": "node scripts/cargo.mjs test --workspace",
+    "cloudflare:password": "tsx scripts/cloudflare-password.ts",
+    "cloudflare:data": "tsx scripts/cloudflare-data.ts",
+    "cloudflare:deploy": "npm run build && wrangler pages deploy dist",
+    "cloudflare:deploy-backups": "wrangler deploy --config cloudflare/wrangler.scheduler.jsonc",
+    "cloudflare:release": "tsx scripts/cloudflare-deploy.ts"
   },
   "dependencies": {
     "vue": "^3.5.43"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
+    "@cloudflare/workers-types": "^5.20261012.1",
     "@playwright/test": "^1.56.0",
+    "@types/node": "^26.6.5",
     "@vitejs/plugin-vue": "^5.2.1",
     "@vue/test-utils": "^2.4.6",
+    "esbuild": "^0.28.2",
     "jsdom": "^26.1.0",
+    "miniflare": "^5.20261006.1-alpha",
+    "tsx": "^4.23.15",
     "typescript": "~5.6.2",
     "vite": "^6.0.3",
     "vitest": "^4.1.11",
-    "vue-tsc": "^2.1.10"
+    "vue-tsc": "^2.1.10",
+    "wrangler": "^4.149.0"
+  },
+  "engines": {
+    "node": ">=24.0.0"
   }
 }

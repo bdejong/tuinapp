@@ -21,7 +21,9 @@ const activityListRef = ref<InstanceType<typeof ActivityList> | null>(null);
 const authenticated = ref(false);
 const sessionChecked = ref(false);
 const workspaceOpened = ref(false);
+const workspaceEpoch = ref(0);
 const errorMessage = ref('');
+const restoredMessage = ref('');
 const signedIn = async () => {
   const restoring = workspaceOpened.value;
   authenticated.value = true; workspaceOpened.value = true; errorMessage.value = '';
@@ -29,6 +31,13 @@ const signedIn = async () => {
   if (restoring) window.dispatchEvent(new Event('session-restored'));
 };
 const sessionExpired = () => { authenticated.value = false; };
+const gardenRestored = () => {
+  // A restore may reuse ids and revisions from an old draft. Remount every view
+  // so no open form can be resubmitted against the restored garden.
+  currentView.value = 'plants'; plantSubView.value = 'list';
+  restoredMessage.value = 'Garden restored. The garden was reloaded and any open drafts were closed.';
+  workspaceEpoch.value++;
+};
 const showError = (event: Event) => { errorMessage.value = (event as CustomEvent<string>).detail; };
 const signOut = async () => { try { await logout(); authenticated.value = false; workspaceOpened.value = false; } catch {} };
 const handleAddPlant = async () => {
@@ -57,6 +66,7 @@ const handleKeydown = (e: KeyboardEvent) => {
 onMounted(async () => {
   window.addEventListener('api-error', showError);
   window.addEventListener('session-expired', sessionExpired);
+  window.addEventListener('garden-restored', gardenRestored);
   try { await checkSession(); signedIn(); } catch {}
   sessionChecked.value = true;
   window.addEventListener('keydown', handleKeydown);
@@ -65,6 +75,7 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('api-error', showError);
   window.removeEventListener('session-expired', sessionExpired);
+  window.removeEventListener('garden-restored', gardenRestored);
   window.removeEventListener('keydown', handleKeydown);
 });
 </script>
@@ -72,8 +83,9 @@ onUnmounted(() => {
 <template>
   <p v-if="!sessionChecked" class="loading-session">Opening your garden…</p>
   <LoginView v-else-if="!authenticated" @signed-in="signedIn" />
-  <div v-if="workspaceOpened" v-show="authenticated" class="app">
+  <div v-if="workspaceOpened" v-show="authenticated" :key="workspaceEpoch" class="app">
     <div v-if="errorMessage" class="error-banner" role="alert">{{ errorMessage }}<button @click="errorMessage = ''" aria-label="Dismiss error">×</button></div>
+    <div v-if="restoredMessage" class="restore-banner" role="status">{{ restoredMessage }}<button @click="restoredMessage = ''" aria-label="Dismiss restore notice">×</button></div>
     <nav class="sidebar">
       <h2>TuinApp</h2><p class="garden-label">GARDEN PLANNER</p>
       <ul>
@@ -252,6 +264,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .garden-label { font-size: 9px; letter-spacing: .15em; opacity: .65; margin: -5px 0 28px; }
 .sign-out { background: transparent; border: 1px solid #ffffff40; color: white; padding: 7px; margin: 12px 0; border-radius: 4px; cursor: pointer; }
 .loading-session { padding: 48px; color: #62745c; }
+.restore-banner { display:flex; justify-content:space-between; align-items:center; padding:12px 20px; background:#e9f2df; color:#285b38; border-bottom:1px solid #cbdcbc; }
+.restore-banner button { border:0; background:transparent; color:inherit; font-size:20px; cursor:pointer; }
 @media print { body { min-width: 0; } .error-banner { display: none; } }
 </style>
 

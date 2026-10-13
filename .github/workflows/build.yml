@@ -1,26 +1,33 @@
-name: Test web application
+name: Test and deploy Cloudflare application
 on:
   push:
   pull_request:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: cloudflare-${{ github.ref }}
+  # Never interrupt an in-progress migration or production deployment.
+  cancel-in-progress: false
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - uses: swatinem/rust-cache@v2
       - run: npm ci
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Prevent edits to existing migrations
+        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000')
+        env:
+          BASE_REVISION: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: npx tsx scripts/cloudflare-check-history.ts "$BASE_REVISION"
+      - run: npm run cloudflare:data -- verify-migrations
       - run: npm run check
       - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run test:e2e
@@ -32,3 +39,26 @@ jobs:
           name: browser-test-failures
           path: test-results/
           retention-days: 7
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.CLOUDFLARE_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Back up, migrate and deploy
+        run: npm run cloudflare:release
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
+          CLOUDFLARE_PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
+          CLOUDFLARE_R2_BUCKET: ${{ vars.CLOUDFLARE_R2_BUCKET }}
+          TUINAPP_PUBLIC_ORIGIN: ${{ vars.TUINAPP_PUBLIC_ORIGIN }}

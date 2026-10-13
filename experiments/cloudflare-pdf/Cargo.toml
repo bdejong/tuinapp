@@ -1,0 +1,23 @@
+[package]
+name = "tuinapp-pdf-wasm"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+printpdf = "=0.7.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+wasm-bindgen = "=0.2.129"
+
+[profile.release]
+lto = true
+opt-level = "s"
+
+[patch.crates-io]
+printpdf = { path = "vendor/printpdf-0.7.0" }

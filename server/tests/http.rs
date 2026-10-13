@@ -109,7 +109,7 @@ async fn private_routes_login_csrf_origin_and_logout() {
     for path in [
         "/api/plants",
         "/api/activities",
-        "/api/backups/download",
+        "/api/backups/missing.sqlite/download",
         "/api/months/10/pdf",
     ] {
         assert_eq!(
@@ -448,26 +448,21 @@ async fn recovery_checks_real_records_and_backup_failures_leave_them_intact() {
     let auth = login(&app).await;
     send(&app, "POST", "/api/plants", plant(), Some(&auth), None).await;
     let before = db::plants(&state.store.lock().unwrap().conn).unwrap();
-    let (status, _, verified) = send(
-        &app,
-        "POST",
-        "/api/backups/verify",
-        Value::Null,
-        Some(&auth),
-        None,
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(verified["last_restore_verified_at"].is_string());
-    assert_eq!(verified["latest"]["plants"], 1);
+    {
+        let mut store = state.store.lock().unwrap();
+        let api::Store { conn, backups } = &mut *store;
+        backups.snapshot(conn, "scheduled").unwrap();
+        assert!(backups.status.last_restore_verified_at.is_some());
+        assert_eq!(backups.status.latest.as_ref().unwrap().plants, 1);
+    }
     std::fs::rename(tmp.path().join("backups"), tmp.path().join("safe-backups")).unwrap();
     std::fs::write(tmp.path().join("backups"), "file").unwrap();
-    assert_eq!(
-        send(&app, "POST", "/api/backups", Value::Null, Some(&auth), None)
-            .await
-            .0,
-        StatusCode::INTERNAL_SERVER_ERROR
-    );
+    {
+        let mut store = state.store.lock().unwrap();
+        let api::Store { conn, backups } = &mut *store;
+        assert!(backups.snapshot(conn, "scheduled").is_err());
+        assert!(backups.status.last_error.is_some());
+    }
     assert_eq!(
         db::plants(&state.store.lock().unwrap().conn).unwrap(),
         before
@@ -507,14 +502,22 @@ async fn backups_run_without_a_browser_session() {
 #[tokio::test]
 async fn downloaded_archive_contains_a_restorable_database_and_manifest() {
     use std::io::Read;
-    let (tmp, _state, app) = setup();
+    let (tmp, state, app) = setup();
     let auth = login(&app).await;
     send(&app, "POST", "/api/plants", plant(), Some(&auth), None).await;
+    let file = {
+        let mut store = state.store.lock().unwrap();
+        let api::Store { conn, backups } = &mut *store;
+        let path = backups.snapshot(conn, "scheduled").unwrap();
+        conn.execute("UPDATE plants SET name='Changed after backup'", [])
+            .unwrap();
+        path.file_name().unwrap().to_str().unwrap().to_owned()
+    };
     let response = app
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/backups/download")
+                .uri(format!("/api/backups/{file}/download"))
                 .header("cookie", &auth.0)
                 .body(Body::empty())
                 .unwrap(),
@@ -542,6 +545,9 @@ async fn downloaded_archive_contains_a_restorable_database_and_manifest() {
     let plants = db::plants(&db::open_existing(&restored).unwrap()).unwrap();
     assert_eq!(plants.len(), 1);
     assert_eq!(plants[0].name, "Desktop tomato");
+    let history = state.store.lock().unwrap().backups.history().unwrap();
+    assert_eq!(history.backups.len(), 1);
+    assert_eq!(history.backups[0].manifest.file, file);
 }
 
 #[tokio::test]

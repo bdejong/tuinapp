@@ -1,0 +1,13 @@
+UPDATE app_state SET schema_version=2 WHERE id=1;
+CREATE TRIGGER plants_generation_insert AFTER INSERT ON plants BEGIN UPDATE app_state SET generation=generation+1 WHERE id=1; END;
+CREATE TRIGGER plants_generation_update AFTER UPDATE ON plants BEGIN UPDATE app_state SET generation=generation+1 WHERE id=1; END;
+CREATE TRIGGER plants_generation_delete AFTER DELETE ON plants BEGIN UPDATE app_state SET generation=generation+1 WHERE id=1; END;
+CREATE TRIGGER activities_generation_insert AFTER INSERT ON activities BEGIN UPDATE app_state SET generation=generation+1 WHERE id=1; END;
+CREATE TRIGGER activities_generation_update AFTER UPDATE ON activities BEGIN UPDATE app_state SET generation=generation+1 WHERE id=1; END;
+CREATE TRIGGER activities_generation_delete AFTER DELETE ON activities BEGIN UPDATE app_state SET generation=generation+1 WHERE id=1; END;
+CREATE TRIGGER photos_generation_insert AFTER INSERT ON plant_photos BEGIN UPDATE app_state SET generation=generation+1 WHERE id=1; END;
+CREATE TRIGGER photos_generation_update AFTER UPDATE ON plant_photos BEGIN UPDATE app_state SET generation=generation+1 WHERE id=1; END;
+CREATE TRIGGER photos_generation_delete AFTER DELETE ON plant_photos BEGIN UPDATE app_state SET generation=generation+1 WHERE id=1; END;
+CREATE TRIGGER imports_generation_insert AFTER INSERT ON imports BEGIN UPDATE app_state SET generation=generation+1 WHERE id=1; END;
+CREATE TRIGGER imports_generation_update AFTER UPDATE ON imports BEGIN UPDATE app_state SET generation=generation+1 WHERE id=1; END;
+CREATE TRIGGER imports_generation_delete AFTER DELETE ON imports BEGIN UPDATE app_state SET generation=generation+1 WHERE id=1; END;

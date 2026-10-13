@@ -1,5 +1,5 @@
 use crate::{
-    backup::{Backups, Status},
+    backup::{Backups, History},
     db,
     models::{Activity, MonthData, Plant},
     pdf,
@@ -192,9 +192,7 @@ pub fn router(state: Arc<AppState>, static_dir: PathBuf) -> Router {
         .route("/months/{month}", get(month))
         .route("/months/{month}/pdf", get(month_pdf))
         .route("/backups/status", get(backup_status))
-        .route("/backups", post(make_backup))
-        .route("/backups/verify", post(verify_backup))
-        .route("/backups/download", get(download_backup))
+        .route("/backups/{filename}/download", get(download_backup))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_auth));
     Router::new()
         .nest(
@@ -484,22 +482,39 @@ async fn month_pdf(State(s): State<Arc<AppState>>, Path(number): Path<i32>) -> R
         .into_response())
 }
 
-async fn backup_status(State(s): State<Arc<AppState>>) -> Result<Json<Status>> {
-    Ok(Json(work(s, |s| Ok(s.backups.status.clone())).await?))
-}
-async fn make_backup(State(s): State<Arc<AppState>>) -> Result<Json<Status>> {
+async fn backup_status(State(s): State<Arc<AppState>>) -> Result<Json<History>> {
     Ok(Json(
         work(s, |s| {
-            s.backups.snapshot(&s.conn, "manual")?;
-            Ok(s.backups.status.clone())
+            s.backups.history().map_err(|e| {
+                eprintln!("Backup history unavailable: {e:#}");
+                ApiError(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Backup history is unavailable. Please try again.".into(),
+                )
+            })
         })
         .await?,
     ))
 }
-async fn download_backup(State(s): State<Arc<AppState>>) -> Result<Response> {
-    let data = work(s, |s| {
+async fn download_backup(
+    State(s): State<Arc<AppState>>,
+    Path(filename): Path<String>,
+) -> Result<Response> {
+    let data = work(s, move |s| {
         use std::io::Write;
-        let path = s.backups.snapshot(&s.conn, "download")?;
+        let path = s.backups.existing(&filename)?.ok_or_else(|| {
+            ApiError(
+                StatusCode::NOT_FOUND,
+                "This backup is no longer available. Refresh the backup list.".into(),
+            )
+        })?;
+        crate::backup::verify(&path).map_err(|e| {
+            eprintln!("Backup download verification failed: {e:#}");
+            ApiError(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "This backup could not be verified. Please try another backup.".into(),
+            )
+        })?;
         let mut archive = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Stored);
@@ -514,37 +529,23 @@ async fn download_backup(State(s): State<Arc<AppState>>) -> Result<Response> {
                 .write_all(&std::fs::read(file).map_err(anyhow::Error::from)?)
                 .map_err(anyhow::Error::from)?;
         }
-        Ok(archive.finish().map_err(anyhow::Error::from)?.into_inner())
+        Ok((
+            archive.finish().map_err(anyhow::Error::from)?.into_inner(),
+            filename.replace(".sqlite", ".zip"),
+        ))
     })
     .await?;
     Ok((
         [
-            (header::CONTENT_TYPE, "application/zip"),
+            (header::CONTENT_TYPE, "application/zip".to_owned()),
             (
                 header::CONTENT_DISPOSITION,
-                "attachment; filename=tuinapp-backup.zip",
+                format!("attachment; filename=\"{}\"", data.1),
             ),
         ],
-        Body::from(data),
+        Body::from(data.0),
     )
         .into_response())
-}
-async fn verify_backup(State(s): State<Arc<AppState>>) -> Result<Json<Status>> {
-    Ok(Json(
-        work(s, |s| {
-            let path = s.backups.snapshot(&s.conn, "restore-test")?;
-            let tmp = tempfile::tempdir().map_err(anyhow::Error::from)?;
-            let restored = tmp.path().join("restored.sqlite");
-            crate::backup::restore(&path, &restored)?;
-            let c = db::readonly(&restored)?;
-            db::plants(&c)?;
-            db::activities(&c)?;
-            s.backups.status.last_restore_verified_at = Some(chrono::Utc::now());
-            s.backups.persist_status()?;
-            Ok(s.backups.status.clone())
-        })
-        .await?,
-    ))
 }
 
 pub fn start_backup_scheduler(

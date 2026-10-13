@@ -62,8 +62,10 @@ enum Command {
         static_dir: PathBuf,
         #[arg(long, env = "TUINAPP_PASSWORD_HASH", hide_env_values = true)]
         password_hash: String,
-        #[arg(long, env = "TUINAPP_BACKUP_INTERVAL_SECONDS", default_value = "3600")]
+        #[arg(long, env = "TUINAPP_BACKUP_INTERVAL_SECONDS", default_value = "300")]
         backup_interval_seconds: u64,
+        #[arg(long, env = "TUINAPP_OFFSITE_STATUS")]
+        offsite_status: Option<PathBuf>,
     },
 }
 
@@ -130,6 +132,7 @@ async fn main() -> Result<()> {
             static_dir,
             password_hash,
             backup_interval_seconds,
+            offsite_status,
         } => {
             ensure!(
                 backup_interval_seconds >= 60,
@@ -151,6 +154,8 @@ async fn main() -> Result<()> {
                 .map_err(|_| anyhow::anyhow!("Another server owns this database"))?;
             let mut c = db::open_existing(&database)?;
             let mut backups = Backups::new(backup_dir)?;
+            backups.status.check_interval_seconds = backup_interval_seconds;
+            backups.offsite_status_path = offsite_status;
             let applied = db::verify_history(&c, db::MIGRATIONS)?;
             // Snapshot failure blocks startup/migration, never silently skips recovery protection.
             backups.snapshot(

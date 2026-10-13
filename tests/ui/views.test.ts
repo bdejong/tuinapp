@@ -11,14 +11,14 @@ import LoginView from '../../src/components/LoginView.vue';
 vi.mock('../../src/api');
 const plant = {id:1,name:'Basil',sun_requirements:3,sow_periods:1,plant_periods:8388608,needs_reorder:true,revision:1};
 const activity = {id:2,name:'Prune',active_periods:1,description:'After frost',revision:1};
-const status = {latest:null,last_error:null,last_restore_verified_at:null,storage:'local'};
+const status: api.BackupStatus = {latest:null,backups:[],last_error:null,last_restore_verified_at:null,last_checked_at:null,checked_unchanged:false,check_interval_seconds:300,offsite:null};
 const button = (wrapper:any,name:string) => wrapper.findAll('button').find((b:any)=>b.text()===name)!;
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(api.getAllPlants).mockResolvedValue([plant]); vi.mocked(api.getAllActivities).mockResolvedValue([activity]);
   vi.mocked(api.getPlantsToReorder).mockResolvedValue([plant]);
   vi.mocked(api.getMonthData).mockResolvedValue({sow_early:[plant],sow_late:[],plant_early:[],plant_late:[],activities:[activity]});
-  vi.mocked(api.getBackupStatus).mockResolvedValue(status); vi.mocked(api.createBackup).mockResolvedValue(status); vi.mocked(api.verifyBackup).mockResolvedValue({...status,last_restore_verified_at:new Date().toISOString()});
+  vi.mocked(api.getBackupStatus).mockResolvedValue(status);
 });
 
 for (const [name,Component,getter] of [['plants',PlantList,'getAllPlants'],['activities',ActivityList,'getAllActivities'],['overview',PlantGrid,'getAllPlants'],['order list',ToOrderView,'getPlantsToReorder']] as const) {
@@ -142,23 +142,6 @@ describe('Monthly calendar', () => {
 });
 
 describe('Settings and login', () => {
-  it('clearly identifies local backup storage and missing restore tests', async () => {
-    const w=mount(SettingsView);await flushPromises();expect(w.text()).toContain('Not yet');expect(w.text()).toContain('Independent, encrypted backup storage will be configured with hosting');
-  });
-  it('reports failed and overdue backups', async () => {
-    vi.mocked(api.getBackupStatus).mockResolvedValue({...status,last_error:'Disk full',latest:{created_at:'2020-01-01',reason:'scheduled',plants:2,activities:1,sha256:'abc'}});const w=mount(SettingsView);await flushPromises();expect(w.text()).toContain('Disk full');expect(w.text()).toContain('overdue');
-  });
-  it('shows a successful recovery check', async () => {
-    const w=mount(SettingsView);await flushPromises();await button(w,'Test recovery').trigger('click');await flushPromises();expect(api.verifyBackup).toHaveBeenCalledOnce();expect(w.get('[role=status]').text()).toContain('restored into a temporary database');
-  });
-  it('does not claim success when backup creation fails', async () => {
-    vi.mocked(api.createBackup).mockRejectedValue(new Error('No space'));const w=mount(SettingsView);await flushPromises();await button(w,'Back up now').trigger('click');await flushPromises();expect(w.find('[role=status]').exists()).toBe(false);expect(button(w,'Back up now').attributes('disabled')).toBeUndefined();
-  });
-  it('has backup controls but no spreadsheet import or upload controls', async () => {
-    const w=mount(SettingsView);await flushPromises();
-    expect(w.text()).not.toMatch(/spreadsheet|import|TSV/i);expect(w.find('input[type=file]').exists()).toBe(false);
-    expect(button(w,'Back up now')).toBeDefined();expect(button(w,'Test recovery')).toBeDefined();expect(button(w,'Download backup')).toBeDefined();
-  });
   it('login failure is visible and does not lose the entered password', async () => {
     vi.mocked(api.login).mockRejectedValue(new Error('Incorrect password'));const w=mount(LoginView);await w.get('input').setValue('wrong');await w.get('form').trigger('submit');await flushPromises();expect(w.get('[role=alert]').text()).toBe('Incorrect password');expect(w.get('input').element).toHaveProperty('value','wrong');expect(w.emitted('signedIn')).toBeUndefined();
   });

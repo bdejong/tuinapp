@@ -1,10 +1,13 @@
 import { it, expect, vi, afterEach } from 'vitest';
-import { login, checkSession, getAllPlants, createPlant, deletePlant, logout, getMonthPdf } from '../../src/api';
+import { login, checkSession, getAllPlants, createPlant, deletePlant, logout, getMonthPdf, restoreBackup } from '../../src/api';
 afterEach(()=>vi.unstubAllGlobals());
 it('adds the session CSRF token to writes and keeps credentials same-origin',async()=>{
-  const fetch=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({csrf_token:'token'}))).mockResolvedValueOnce(new Response(JSON.stringify({id:1})));
+  const salt=btoa(String.fromCharCode(...new Uint8Array(16)));
+  const fetch=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({version:1,algorithm:'PBKDF2-SHA-256',salt,iterations:600000}))).mockResolvedValueOnce(new Response(JSON.stringify({csrf_token:'token'}))).mockResolvedValueOnce(new Response(JSON.stringify({id:1})));
   vi.stubGlobal('fetch',fetch);await login('password');await createPlant({name:'A',sun_requirements:0,sow_periods:0,plant_periods:0,needs_reorder:false});
-  const [url,options]=fetch.mock.calls[1];expect(url).toBe('/api/plants');expect(options.credentials).toBe('same-origin');expect(options.headers['X-CSRF-Token']).toBe('token');expect(options.headers['X-Tuinapp-Request']).toBe('1');
+  expect(fetch.mock.calls[0][0]).toBe('/api/login-parameters');
+  const loginOptions=fetch.mock.calls[1][1];expect(fetch.mock.calls[1][0]).toBe('/api/login');expect(JSON.parse(loginOptions.body)).not.toHaveProperty('password');expect(JSON.parse(loginOptions.body).proof).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  const [url,options]=fetch.mock.calls[2];expect(url).toBe('/api/plants');expect(options.credentials).toBe('same-origin');expect(options.headers['X-CSRF-Token']).toBe('token');expect(options.headers['X-Tuinapp-Request']).toBe('1');
 });
 it('handles an empty successful delete response',async()=>{
   vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(null,{status:204})));await expect(deletePlant(1,2)).resolves.toBeUndefined();
@@ -26,10 +29,11 @@ it('logout uses a protected DELETE and accepts an empty response',async()=>{
   const fetch=vi.fn().mockResolvedValue(new Response(null,{status:204}));vi.stubGlobal('fetch',fetch);await logout();expect(fetch.mock.calls[0][1].method).toBe('DELETE');
 });
 
-it('fetches printable PDF bytes for the selected month with the owner session',async()=>{
-  const blob=new Blob(['%PDF-1.3'],{type:'application/pdf'});
-  const fetch=vi.fn().mockResolvedValue({ok:true,status:200,blob:async()=>blob});vi.stubGlobal('fetch',fetch);
-  expect(await getMonthPdf(10)).toBe(blob);expect(fetch.mock.calls[0][0]).toBe('/api/months/10/pdf');
+it('fetches selected-month data and renders printable PDF bytes locally',async()=>{
+  const data={sow_early:[],sow_late:[],plant_early:[],plant_late:[],activities:[]};
+  const fetch=vi.fn().mockResolvedValue(new Response(JSON.stringify(data)));vi.stubGlobal('fetch',fetch);
+  const blob=await getMonthPdf(10);expect(blob.type).toBe('application/pdf');expect(blob.size).toBeGreaterThan(20);
+  expect(fetch.mock.calls[0][0]).toBe('/api/months/10/pdf-data');
   expect(fetch.mock.calls[0][1].credentials).toBe('same-origin');expect(fetch.mock.calls[0][1].method).toBe('GET');
 });
 
@@ -46,4 +50,21 @@ it('an expired write opens sign-in without also showing a global error',async()=
     vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('{}',{status:401})));
     await expect(deletePlant(1,1)).rejects.toThrow();expect(expired).toHaveBeenCalledOnce();expect(error).not.toHaveBeenCalled();
   } finally {window.removeEventListener('api-error',error);window.removeEventListener('session-expired',expired);}
+});
+
+it('backup downloads use the selected filename and report failure inline',async()=>{
+  const {downloadBackup}=await import('../../src/api');const event=vi.fn();window.addEventListener('api-error',event);
+  try {
+    const fetch=vi.fn().mockResolvedValue(new Response(JSON.stringify({error:'Unavailable'}),{status:503}));vi.stubGlobal('fetch',fetch);
+    await expect(downloadBackup('a b.sql')).rejects.toThrow('Unavailable');expect(fetch.mock.calls[0][0]).toBe('/api/backups/a%20b.sql/download');expect(event).not.toHaveBeenCalled();
+  } finally {window.removeEventListener('api-error',event);}
+});
+
+it('uploads a selected SQL dump with CSRF and explicit replacement confirmation',async()=>{
+  const fetch=vi.fn().mockResolvedValue(new Response(JSON.stringify({ok:true}),{status:200}));vi.stubGlobal('fetch',fetch);
+  const file=new File(['INSERT INTO plants(name) VALUES (\'Basil\');'],'garden.sql',{type:'application/sql'});
+  await restoreBackup(file);const [url,options]=fetch.mock.calls[0];
+  expect(url).toBe('/api/backups/restore');expect(options.method).toBe('POST');expect(options.credentials).toBe('same-origin');
+  expect(options.headers['Content-Type']).toBe('application/sql');expect(options.headers['X-Tuinapp-Request']).toBe('1');
+  expect(options.headers['X-Tuinapp-Restore-Confirm']).toBe('replace');expect(options.body).toBe(file);
 });

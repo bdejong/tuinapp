@@ -32,7 +32,7 @@ test('a slow or failed PDF preserves the calendar and supports retry', async ({ 
   await expect(page.getByRole('button', { name: 'Printable PDF', exact: true })).toBeEnabled();
   let fail!: () => void;
   const gate = new Promise<void>(resolve => { fail = resolve; });
-  await page.route('**/api/months/10/pdf', async route => {
+  await page.route('**/api/months/10/pdf-data', async route => {
     await gate;
     await route.fulfill({ status: 503, json: { error: 'PDF temporarily unavailable' } });
   });
@@ -43,7 +43,7 @@ test('a slow or failed PDF preserves the calendar and supports retry', async ({ 
   fail();
   await expect(page.locator('.monthly-view [role=alert]')).toContainText('PDF temporarily unavailable');
   await expect(page.getByRole('heading', { name: 'October in the garden' })).toBeVisible();
-  await page.unroute('**/api/months/10/pdf');
+  await page.unroute('**/api/months/10/pdf-data');
   const pendingDownload = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Retry PDF', exact: true }).click();
   expect((await pendingDownload).suggestedFilename()).toBe('garden-planner-october.pdf');

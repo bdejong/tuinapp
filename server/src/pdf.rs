@@ -2,7 +2,7 @@
 //! Intentionally use the same renderer and dimensions; this is not HTML printing.
 use crate::models::{MonthData, Plant};
 use printpdf::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 pub const MONTHS: [&str; 12] = [
     "January",
@@ -24,7 +24,7 @@ mod symbols;
 #[path = "pdf_text.rs"]
 mod text;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct PrintPlant {
     pub name: String,
     #[serde(default)]
@@ -103,7 +103,7 @@ impl PrintData {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CategoryData {
     pub vegetables: Vec<PrintPlant>,
@@ -112,7 +112,7 @@ pub struct CategoryData {
     pub other: Vec<PrintPlant>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrintData {
     pub month_name: String,
